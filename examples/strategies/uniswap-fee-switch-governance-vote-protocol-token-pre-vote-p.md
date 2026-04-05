@@ -43,7 +43,8 @@ This is **not** a pure pattern trade. The mechanism is game-theoretic and model-
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Trigger Conditions (both legs require ALL conditions met)
 
@@ -75,6 +76,9 @@ Do not run Leg A and Leg B as a straddle. The pre-vote long and the failed-vote 
 
 ---
 
+## Exit Rules
+
+Defined within Entry Rules section.
 ## Position Sizing
 
 - **Base allocation:** 2% of portfolio per trade (both legs independently)
@@ -179,7 +183,7 @@ Abandon the strategy if any of the following occur:
 
 ---
 
-## Risks — Honest Assessment
+## Risks
 
 ### High-severity risks
 

@@ -42,7 +42,8 @@ The edge is the **lag** between queue clearance and full premium compression. Th
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Entry Conditions (ALL must be true simultaneously)
 
@@ -58,6 +59,8 @@ The edge is the **lag** between queue clearance and full premium compression. Th
 
 *If holding rETH already:* Exit the position.
 *If no existing position:* Borrow rETH via Aave v3 (rETH is listed as collateral), sell for ETH, repay when premium collapses. Note: borrow rate must be < expected premium capture.
+
+## Exit Rules
 
 ### Exit Conditions (FIRST trigger wins)
 

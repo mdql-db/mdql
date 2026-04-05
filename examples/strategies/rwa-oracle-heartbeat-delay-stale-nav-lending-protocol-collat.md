@@ -53,7 +53,8 @@ When Treasury yields spike intraday by ≥15bps on a day when RWA collateral ora
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Trigger Conditions (all must be met)
 
@@ -82,6 +83,8 @@ Use modified duration of the underlying RWA portfolio (e.g., OUSG ≈ 0.25yr dur
 - **Entry timing:** Enter short within 2h of yield spike confirmation, no later than 3h before expected oracle update
 - **Entry size:** See position sizing section
 - **Do not enter** if oracle has already updated for the day (check timestamp on-chain)
+
+## Exit Rules
 
 ### Exit
 

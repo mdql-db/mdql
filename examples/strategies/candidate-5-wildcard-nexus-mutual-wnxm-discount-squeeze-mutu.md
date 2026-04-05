@@ -50,7 +50,8 @@ The trade targets only the **stress discount** — the portion above the structu
 
 ---
 
-## Entry / Exit Rules
+## Entry Rules
+
 
 ### Entry Conditions (ALL must be true simultaneously)
 
@@ -62,6 +63,8 @@ The trade targets only the **stress discount** — the portion above the structu
 | wNXM 24h volume | > $100k on Uniswap | Uniswap v2/v3 subgraph |
 
 **Entry execution:** Market buy wNXM on Uniswap v2 (primary liquidity pool). Split into 3 tranches over 24-48 hours to reduce slippage impact given illiquidity. Do not use limit orders — the signal window may be short.
+
+## Exit Rules
 
 ### Exit Conditions (FIRST triggered wins)
 
@@ -195,7 +198,7 @@ Abandon the strategy if ANY of the following occur:
 
 ---
 
-## Risks (Honest Assessment)
+## Risks
 
 ### Critical Risks
 

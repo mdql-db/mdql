@@ -13,7 +13,7 @@ created: "2026-04-03"
 pipeline_stage: "Pre-backtest (step 2 of 9)"
 ---
 
-## 1. Hypothesis
+## Hypothesis
 
 When a Cosmos validator raises its commission rate by ≥10 percentage points and controls ≥50M tokens of delegated stake, a measurable cohort of delegators initiates unbonding within 72 hours of the on-chain announcement. Protocol rules lock these tokens for a fixed duration (21 days for ATOM, 14 days for OSMO, 7 days for INJ). At expiry, the entire cohort receives liquid tokens simultaneously. A meaningful fraction will sell immediately, creating a predictable, time-stamped supply shock. The edge is not that delegators *tend* to sell — it is that the tokens *cannot* be sold before expiry regardless of intent, and the expiry timestamp is known to the minute from the unbonding transaction itself.
 
@@ -21,7 +21,7 @@ When a Cosmos validator raises its commission rate by ≥10 percentage points an
 
 ---
 
-## 2. Structural Mechanism
+## Structural Mechanism
 
 ### 2a. Why the clock exists
 
@@ -44,7 +44,7 @@ All delegators who initiate unbonding within the same 24-hour window share the s
 
 ---
 
-## 3. Legs of the Trade
+## Legs of the Trade
 
 ### Leg 1 — Fade the Announcement Dip (Optional, Lower Conviction)
 
@@ -86,7 +86,7 @@ All delegators who initiate unbonding within the same 24-hour window share the s
 
 ---
 
-## 4. Position Sizing
+## Position Sizing
 
 **Base position size formula:**
 
@@ -110,7 +110,7 @@ Where:
 
 ---
 
-## 5. Backtest Methodology
+## Backtest Methodology
 
 ### 5a. Data collection
 
@@ -151,7 +151,7 @@ For each event, calculate:
 
 ---
 
-## 6. Go-Live Criteria
+## Go-Live Criteria
 
 All of the following must be satisfied before allocating real capital:
 
@@ -169,7 +169,7 @@ If sample size is <15 events, move to paper trading for 6 months before live cap
 
 ---
 
-## 7. Kill Criteria
+## Kill Criteria
 
 Suspend the strategy immediately if any of the following occur:
 
@@ -184,7 +184,7 @@ Suspend the strategy immediately if any of the following occur:
 
 ---
 
-## 8. Risks
+## Risks
 
 ### 8a. Mechanism risks
 
@@ -218,7 +218,7 @@ Suspend the strategy immediately if any of the following occur:
 
 ---
 
-## 9. Data Sources
+## Data Sources
 
 | Data Type | Source | Cost | Notes |
 |-----------|--------|------|-------|
@@ -237,7 +237,7 @@ Suspend the strategy immediately if any of the following occur:
 
 ---
 
-## 10. Implementation Checklist
+## Implementation Checklist
 
 - [ ] Build Cosmos LCD poller: monitor commission change events across ATOM, OSMO, INJ every 10 minutes
 - [ ] Build unbonding cohort tracker: log all unbonding transactions within 72h of qualifying commission change, sum by completion timestamp
@@ -249,7 +249,7 @@ Suspend the strategy immediately if any of the following occur:
 
 ---
 
-## 11. Relationship to Existing Zunid Infrastructure
+## Relationship to Existing Zunid Infrastructure
 
 This strategy is a direct extension of the token unlock short playbook:
 
@@ -264,3 +264,11 @@ This strategy is a direct extension of the token unlock short playbook:
 | Data source | Token unlock calendars | Cosmos LCD API |
 
 The primary difference is that the trigger event (commission change) is endogenous and unpredictable, whereas token unlock dates are known months in advance. This makes Cosmos Unbonding Cliff a reactive strategy (monitor and respond) rather than a calendar strategy (schedule in advance). The execution infrastructure — short perp, size based on expected sell flow, exit at T+24h — is identical.
+
+## Entry Rules
+
+TBD
+
+## Exit Rules
+
+TBD

@@ -47,7 +47,8 @@ In the 7 days before an airdrop claim deadline, procrastinating recipients face 
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Pre-conditions (all must be met before entering)
 
@@ -62,6 +63,8 @@ In the 7 days before an airdrop claim deadline, procrastinating recipients face 
 - **Primary entry:** T-7 days before claim deadline, market open of that UTC day
 - **Secondary confirmation (optional scale-in):** If on-chain daily claim volume at T-5 or T-4 is ≥ 2× the 7-day average claim rate prior to T-7, add 50% to position
 - **Do not enter** if token price has already declined >20% in the 14 days prior to T-7 (sell pressure may already be priced)
+
+## Exit Rules
 
 ### Exit
 

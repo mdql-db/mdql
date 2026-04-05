@@ -56,7 +56,8 @@ When Solana TPS normalises and bridge queues drain, the first arb bots to bridge
 
 ---
 
-## Entry / Exit Rules
+## Entry Rules
+
 
 ### Universe
 
@@ -98,6 +99,8 @@ basis = (HL_mark_price − Jupiter_best_price) / Jupiter_best_price
 - If `basis < −1.5%` (HL mark < Jupiter spot): **Long HL perp, Short Jupiter spot** *(note: shorting on Jupiter requires borrowing — treat as long-only on Solana side for initial backtest)*
 - Enter both legs simultaneously (or as close as possible — accept up to 30-second leg lag)
 - Use limit orders on Hyperliquid (post-only to capture maker rebate); use Jupiter's swap with 0.5% slippage tolerance
+
+## Exit Rules
 
 ### Exit
 

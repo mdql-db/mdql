@@ -64,7 +64,8 @@ If liquidation fails to cover bad debt (collateral value < debt value at time of
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Monitoring (Pre-Entry)
 
@@ -97,6 +98,8 @@ Filter: `totalDebtUSD > 5000000` AND `healthFactor < 1.2`.
 | No active SM shortfall event | Protocol not already in crisis mode |
 
 **Entry action:** Short AAVE perpetual on Hyperliquid at market. Record entry price, position HF at entry, collateral asset, and debt size.
+
+## Exit Rules
 
 ### Exit Triggers (first condition met wins)
 

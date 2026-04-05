@@ -43,7 +43,8 @@ This is not a tendency — it is an architectural constraint with documented par
 
 ---
 
-## Entry / Exit Rules
+## Entry Rules
+
 
 ### Monitoring Infrastructure Required
 - L1 base fee stream: poll `eth_feeHistory` on Ethereum mainnet every block (~12s)
@@ -72,6 +73,8 @@ Two categories, in priority order:
 - Monitor lending protocols on L2: Aave v3 (Arbitrum, Base, OP), Compound v3, Radiant
 - Pre-calculate liquidation profitability at stale vs. correct gas
 - Queue positions where: `liquidation_bonus - gas_cost_at_stale > 0` AND `liquidation_bonus - gas_cost_at_correct < 0`
+
+## Exit Rules
 
 ### Exit Rules
 - **Arb:** Natural close — arb executes atomically in one transaction, position is flat immediately

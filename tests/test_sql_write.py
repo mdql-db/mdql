@@ -56,7 +56,7 @@ class TestParseUpdate:
         assert isinstance(q, UpdateQuery)
         assert q.table == "notes"
         assert q.assignments == [("status", "approved")]
-        assert q.where is None
+        assert q.where_clause is None
 
     def test_multiple_assignments(self):
         q = parse_query("UPDATE notes SET status = 'done', priority = 1")
@@ -66,14 +66,14 @@ class TestParseUpdate:
     def test_with_where(self):
         q = parse_query("UPDATE notes SET status = 'killed' WHERE path = 'old.md'")
         assert isinstance(q, UpdateQuery)
-        assert q.where is not None
+        assert q.where_clause is not None
 
     def test_with_complex_where(self):
         q = parse_query(
             "UPDATE notes SET status = 'killed' WHERE priority > 3 AND status = 'draft'"
         )
         assert isinstance(q, UpdateQuery)
-        assert q.where is not None
+        assert q.where_clause is not None
 
 
 class TestParseDelete:
@@ -81,17 +81,17 @@ class TestParseDelete:
         q = parse_query("DELETE FROM notes")
         assert isinstance(q, DeleteQuery)
         assert q.table == "notes"
-        assert q.where is None
+        assert q.where_clause is None
 
     def test_with_where(self):
         q = parse_query("DELETE FROM notes WHERE path = 'old.md'")
         assert isinstance(q, DeleteQuery)
-        assert q.where is not None
+        assert q.where_clause is not None
 
     def test_with_complex_where(self):
         q = parse_query("DELETE FROM notes WHERE status = 'draft' AND priority < 3")
         assert isinstance(q, DeleteQuery)
-        assert q.where is not None
+        assert q.where_clause is not None
 
 
 # ── Execution tests via Table.execute_sql ─────────────────────────────

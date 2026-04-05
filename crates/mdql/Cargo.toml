@@ -1,0 +1,17 @@
+[package]
+name = "mdql"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "mdql"
+path = "src/main.rs"
+
+[dependencies]
+mdql-core = { path = "../mdql-core" }
+mdql-web = { path = "../mdql-web" }
+clap = { version = "4", features = ["derive"] }
+comfy-table = "7"
+serde_json = "1"
+serde_yaml = "0.9"
+tokio = { version = "1", features = ["full"] }

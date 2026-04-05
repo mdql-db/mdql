@@ -56,7 +56,8 @@ When `HF < 1.0`, liquidation is permissionless and economically incentivised (li
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Pre-computation (continuous background process)
 - Maintain a live liquidation depth map for each supported collateral asset (ETH, WBTC, stETH, cbETH, LINK, UNI, ARB, OP — assets with Hyperliquid perp liquidity)
@@ -78,6 +79,8 @@ When `HF < 1.0`, liquidation is permissionless and economically incentivised (li
 - Enter short on Hyperliquid perp for asset Y
 - Entry price: market order, immediately after liquidation event confirmed on-chain (target: within 30 seconds of liquidation tx)
 - Do NOT wait for price to start moving — enter on the structural signal, not the price signal
+
+## Exit Rules
 
 ### Exit Rules (first condition hit)
 | Exit Condition | Action |
@@ -163,7 +166,7 @@ Compare against: (a) random short entry on same assets at same timestamps (no li
 
 ---
 
-## Go-Live Criteria (Paper Trading Gate)
+## Go-Live Criteria
 
 All of the following must be satisfied before paper trading:
 
@@ -194,7 +197,7 @@ Abandon the strategy (paper or live) if any of the following occur:
 
 ---
 
-## Risks — Honest Assessment
+## Risks
 
 ### Critical Risks
 
@@ -221,7 +224,7 @@ The original proposal noted we are "helping push" the price to the cascade trigg
 
 ---
 
-## Data Sources — Complete Reference
+## Data Sources
 
 | Source | Data | URL | Update frequency |
 |---|---|---|---|

@@ -62,7 +62,8 @@ Avi Eisenberg's $63M CRV short attack left Aave with ~$1.6M bad debt. A governan
 
 ---
 
-## Entry / Exit Rules
+## Entry Rules
+
 
 ### Entry Conditions (ALL must be met)
 
@@ -78,6 +79,8 @@ Avi Eisenberg's $63M CRV short attack left Aave with ~$1.6M bad debt. A governan
 **Entry timing:** Open short within **2 hours** of proposal submission being confirmed on-chain or Snapshot. Do not wait for voting to begin — the proposal submission itself is the signal.
 
 **Entry price:** Market order (slippage acceptable given the multi-day holding period). Do not use limit orders that risk missing the entry.
+
+## Exit Rules
 
 ### Exit Rules
 
@@ -166,7 +169,7 @@ A valid signal requires:
 
 ---
 
-## Go-Live Criteria (Paper Trading)
+## Go-Live Criteria
 
 Before paper trading, the backtest must show:
 
@@ -194,7 +197,7 @@ Abandon the strategy if any of the following occur:
 
 ---
 
-## Risks — Honest Assessment
+## Risks
 
 ### Primary Risk: Governance Prefers Treasury Recovery
 The November 2022 CRV incident resolved via treasury, not slashing. Aave's governance token holders ARE the stakers — they have a direct financial incentive to vote against slashing themselves. The mechanism exists but the community has shown it will exhaust every alternative before triggering it. **This is the single biggest risk to the strategy.** Mitigation: only enter when the proposal explicitly states slashing as the *primary* mechanism, not a fallback.

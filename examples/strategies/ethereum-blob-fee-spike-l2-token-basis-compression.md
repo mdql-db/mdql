@@ -60,7 +60,8 @@ The throughput degradation mechanism:
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Signal Definition
 
@@ -82,6 +83,8 @@ The throughput degradation mechanism:
    - **Long ETH-USDC perp** on Hyperliquid (equal notional)
 4. Record entry spread value for stop calculation
 5. Log blob base fee at entry, 7d median at entry, and block number
+
+## Exit Rules
 
 ### Exit — ordered by priority
 

@@ -45,7 +45,8 @@ The merkle root update or contract parameter change is an on-chain, immutable ev
 
 ---
 
-## Entry / Exit Rules
+## Entry Rules
+
 
 ### Pre-Trade Filters (must ALL pass before entry)
 
@@ -64,6 +65,8 @@ The merkle root update or contract parameter change is an on-chain, immutable ev
 - **Entry timing:** Market short within 60 minutes of trigger confirmation.
 - **Entry instrument:** Perpetual futures short on Hyperliquid (preferred) or Binance. If perp unavailable, skip — do not use spot borrow (too slow, too expensive).
 - **Entry price:** Market order. Do not use limit orders — the edge is time-sensitive and slippage is acceptable given the expected move.
+
+## Exit Rules
 
 ### Exit
 
@@ -199,3 +202,7 @@ The event universe must be manually constructed from governance forums. There is
 ---
 
 *This specification is sufficient to begin manual event cataloguing and backtest construction. The critical path item is building the event universe — without ≥15 qualifying events, no statistical conclusion is possible and the strategy should not proceed to paper trading.*
+
+## Position Sizing
+
+TBD

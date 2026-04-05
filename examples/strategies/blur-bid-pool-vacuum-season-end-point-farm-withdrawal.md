@@ -53,7 +53,8 @@ The difference from pure sentiment plays: the withdrawal is **mechanically force
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Trigger Conditions (all must be met)
 1. Blur season end date is **publicly confirmed** (Blur blog, official Discord, or on-chain season contract parameter)
@@ -66,6 +67,8 @@ The difference from pure sentiment plays: the withdrawal is **mechanically force
 - **Instrument:** BLUR perpetual futures on Hyperliquid (primary) or Binance (secondary)
 - **Price:** Market order or limit within 0.3% of mid
 - **Do not enter** if season has been extended in the past 7 days (protocol manipulation risk)
+
+## Exit Rules
 
 ### Exit
 - **Primary exit:** 48 hours post-snapshot, market order regardless of P&L
@@ -173,7 +176,7 @@ Abandon the strategy immediately if any of the following occur:
 
 ---
 
-## Risks — Honest Assessment
+## Risks
 
 ### Risk 1: Protocol Rule Changes (HIGH probability, HIGH impact)
 Blur has extended seasons retroactively with little notice. A single extension announcement post-entry turns the trade from "snapshot in 6h" to "snapshot in 3 weeks" — the bid pool refills and the short bleeds. **Mitigation:** Hard stop at +12%. Do not enter if any extension has occurred in the current season.

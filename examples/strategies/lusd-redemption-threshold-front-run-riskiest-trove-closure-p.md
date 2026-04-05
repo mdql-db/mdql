@@ -291,3 +291,15 @@ Identify all historical LUSD depeg events (price < $0.998 for >30 min) from Curv
 ---
 
 *Next step: Assign to data pipeline. Pull Liquity subgraph data for all LUSD depeg events 2022–2024. Build trove queue reconstruction script. Measure redemption lag distribution. Report back before proceeding to step 3 (backtest execution).*
+
+## Entry Rules
+
+TBD
+
+## Exit Rules
+
+TBD
+
+## Position Sizing
+
+TBD

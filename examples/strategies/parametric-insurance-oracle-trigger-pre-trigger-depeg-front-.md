@@ -45,7 +45,8 @@ Parametric insurance is designed to remove human discretion. The payout trigger 
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Universe Definition
 - Covered assets: stablecoins or tokens with active parametric coverage on Sherlock, Unslashed Finance, or Etherisc with documented trigger thresholds
@@ -71,6 +72,8 @@ Parametric insurance is designed to remove human discretion. The payout trigger 
   2. 4H trend is toward threshold
   3. Oracle accumulation count ≥ 50% of required consecutive readings (if time-based trigger)
   4. Pool TVL > $5M (confirmed on-chain at entry)
+
+## Exit Rules
 
 ### Exit Rules
 **Take profit:**
@@ -177,7 +180,7 @@ Abandon the strategy if any of the following occur:
 
 ---
 
-## Risks — Honest Assessment
+## Risks
 
 ### High Severity
 
@@ -203,7 +206,7 @@ Abandon the strategy if any of the following occur:
 
 ---
 
-## Data Sources — Consolidated
+## Data Sources
 
 | Purpose | Source | Access Method |
 |---|---|---|

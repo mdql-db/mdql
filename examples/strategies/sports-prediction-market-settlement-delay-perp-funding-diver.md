@@ -61,7 +61,8 @@ This is **not** a guaranteed mechanical convergence. Score 5/10 reflects this ho
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Entry Conditions (ALL must be true simultaneously)
 
@@ -83,6 +84,8 @@ This is **not** a guaranteed mechanical convergence. Score 5/10 reflects this ho
 - Primary venue: Hyperliquid perp if listed (check current listings: https://app.hyperliquid.xyz/trade)
 - Secondary venue: Chiliz DEX spot (https://exchange.chiliz.net) or any CEX listing (Binance, KuCoin)
 - Use limit orders within 0.3% of mid to avoid paying wide spreads on thin books. If not filled within 2 minutes, cancel and skip the trade.
+
+## Exit Rules
 
 ### Exit Rules
 

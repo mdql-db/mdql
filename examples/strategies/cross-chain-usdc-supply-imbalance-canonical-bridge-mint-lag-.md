@@ -178,7 +178,7 @@ The strategy is suspended immediately if any of the following occur:
 
 ---
 
-## Risk Register
+## Risks
 
 | Risk | Severity | Probability | Mitigation |
 |---|---|---|---|
@@ -226,3 +226,7 @@ This strategy is **capital-efficient but operationally intensive** relative to i
 The strategy is **not executable on Hyperliquid** and requires direct DeFi infrastructure. This is a pure on-chain yield arb. It should be evaluated as a capital deployment strategy for idle USDC, not as a primary trading strategy.
 
 **Next step**: Build Dune dashboard pulling hourly Aave v3 rates on both chains, overlay Across pool depth, and identify all historical events meeting entry criteria. Estimate net yield per event. Report back before proceeding to step 3.
+
+## Position Sizing
+
+TBD

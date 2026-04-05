@@ -14,7 +14,7 @@ created: "2026-04-04"
 pipeline_stage: "Pre-backtest (step 2 of 9)"
 ---
 
-## 1. Hypothesis
+## Hypothesis
 
 When a DeFi lending protocol reduces the Loan-to-Value (LTV) ratio or liquidation threshold for a collateral asset via governance, all existing borrowers whose positions fall between the old and new parameter bands are **mechanically pushed toward liquidation** the moment the smart contract parameter change executes. This is structurally identical to a repo desk increasing haircuts on downgraded collateral: the rule change forces leveraged players to either post more collateral or unwind. The governance timelock (typically 24–72 hours between vote passage and execution) creates a **known, bounded window** in which the forced unwind is certain to occur but has not yet been priced. Shorting the collateral asset during this window captures the mechanical selling pressure.
 
@@ -22,7 +22,7 @@ The edge is not "LTV reductions tend to cause price drops." The edge is: **a spe
 
 ---
 
-## 2. Structural Mechanism
+## Structural Mechanism
 
 ### 2.1 The Repo Haircut Analogy
 
@@ -65,7 +65,7 @@ The **timelock window** (governance passes → execution) is the trading window.
 
 ---
 
-## 3. Universe and Scope
+## Universe and Scope
 
 **Protocols in scope:**
 - Aave V3 (Ethereum, Arbitrum, Optimism, Polygon, Base)
@@ -85,7 +85,7 @@ The **timelock window** (governance passes → execution) is the trading window.
 
 ---
 
-## 4. Signal Generation
+## Signal Generation
 
 ### 4.1 Governance Monitoring
 
@@ -152,7 +152,7 @@ Raw forced flow overstates price impact. Apply adjustments:
 
 ---
 
-## 5. Entry Rules
+## Entry Rules
 
 ### 5.1 Entry Trigger
 
@@ -177,7 +177,7 @@ Rationale: Forced selling of the collateral asset (to repay debt or avoid liquid
 
 ---
 
-## 6. Exit Rules
+## Exit Rules
 
 ### 6.1 Primary Exit
 
@@ -199,7 +199,7 @@ Market order on Hyperliquid. Do not use limit orders for exit — the goal is to
 
 ---
 
-## 7. Position Sizing
+## Position Sizing
 
 ### 7.1 Base Sizing Formula
 
@@ -234,7 +234,7 @@ Maximum 3x leverage. The edge is directional but not high-conviction on magnitud
 
 ---
 
-## 8. Backtest Methodology
+## Backtest Methodology
 
 ### 8.1 Historical Event Set
 
@@ -308,7 +308,7 @@ Note: Health factor must be recalculated with new LT applied — the subgraph re
 
 ---
 
-## 9. Go-Live Criteria
+## Go-Live Criteria
 
 The strategy moves from backtest to paper trading when:
 
@@ -326,7 +326,7 @@ Paper trading period: Minimum 5 live events before real capital deployment. Pape
 
 ---
 
-## 10. Kill Criteria
+## Kill Criteria
 
 **Immediate kill (stop all new positions):**
 - Two consecutive losses > 3% each (suggests systematic error in thesis or changed market conditions)
@@ -345,7 +345,7 @@ Paper trading period: Minimum 5 live events before real capital deployment. Pape
 
 ---
 
-## 11. Risks
+## Risks
 
 ### 11.1 Escape Valve Risk (Primary Risk)
 
@@ -417,7 +417,7 @@ Paper trading period: Minimum 5 live events before real capital deployment. Pape
 
 ---
 
-## 12. Data Sources
+## Data Sources
 
 | Data Type | Source | Access | Cost |
 |-----------|--------|--------|------|
@@ -438,7 +438,7 @@ Paper trading period: Minimum 5 live events before real capital deployment. Pape
 
 ---
 
-## 13. Operational Requirements
+## Operational Requirements
 
 ### 13.1 Monitoring Infrastructure
 
@@ -463,7 +463,7 @@ Paper trading period: Minimum 5 live events before real capital deployment. Pape
 
 ---
 
-## 14. Open Questions for Backtest Phase
+## Open Questions for Backtest Phase
 
 1. **What fraction of at-risk positions historically topped up vs. were liquidated?** This determines the escape valve discount factor.
 2. **How much of the price move occurs before vote passage (forum leak) vs. after?** This determines whether our entry timing is correct.
@@ -474,7 +474,7 @@ Paper trading period: Minimum 5 live events before real capital deployment. Pape
 
 ---
 
-## 15. Strategy Summary Card
+## Strategy Summary Card
 
 | Field | Value |
 |-------|-------|

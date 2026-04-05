@@ -6,3 +6,10 @@ __pycache__/
 dist/
 build/
 .pytest_cache/
+.mdql_lock
+.mdql_journal
+*.mdql_tmp
+
+# Rust
+target/
+_mdql_index/

@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MDQL Client</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div class="layout">
+        <aside class="sidebar" id="sidebar">
+            <h2>MDQL</h2>
+            <div class="sidebar-section">
+                <h3>Tables</h3>
+                <ul id="table-list"></ul>
+            </div>
+            <div class="sidebar-section" id="schema-detail" style="display:none">
+                <h3 id="schema-table-name"></h3>
+                <div id="schema-fields"></div>
+            </div>
+        </aside>
+        <main class="main">
+            <div class="editor-area">
+                <textarea id="sql-input" placeholder="SELECT * FROM strategies WHERE status = 'ACTIVE' LIMIT 10" spellcheck="false"></textarea>
+                <div class="editor-controls">
+                    <button id="run-btn" onclick="runQuery()">Run (Ctrl+Enter)</button>
+                    <select id="format-select">
+                        <option value="table">Table</option>
+                        <option value="json">JSON</option>
+                        <option value="csv">CSV</option>
+                    </select>
+                    <span id="status-text"></span>
+                </div>
+            </div>
+            <div class="results-area" id="results-area">
+                <div class="placeholder">Run a query to see results</div>
+            </div>
+            <div class="history-area">
+                <h3>History</h3>
+                <ul id="history-list"></ul>
+            </div>
+        </main>
+    </div>
+    <script src="/app.js"></script>
+</body>
+</html>

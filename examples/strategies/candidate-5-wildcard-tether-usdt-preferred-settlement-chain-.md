@@ -50,7 +50,8 @@ This is not a "tends to happen" pattern. Tether's published redemption guarantee
 
 ---
 
-## Entry / Exit Rules
+## Entry Rules
+
 
 ### Trigger Conditions (all must be met)
 1. Tether publishes an official deprecation notice for a specific chain (source: tether.to/news or official Tether social channels)
@@ -64,6 +65,8 @@ This is not a "tends to happen" pattern. Tether's published redemption guarantee
 - **Step 2:** Immediately initiate bridge transfer to a supported chain (Ethereum USDT preferred for deepest liquidity on exit)
 - **Step 3:** On supported chain, sell USDT at par (or hold if already in USDT — no further action needed)
 - **Do not hold deprecated-chain USDT without an active bridge transaction in progress**
+
+## Exit Rules
 
 ### Exit
 - **Primary exit:** Bridge confirms → USDT received on supported chain → sell or hold at par
@@ -180,7 +183,7 @@ Abandon this strategy if any of the following occur:
 
 ---
 
-## Risks (Honest Assessment)
+## Risks
 
 ### High-Severity Risks
 

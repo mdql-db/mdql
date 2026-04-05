@@ -47,7 +47,8 @@ Governance tokens are priced primarily by retail sentiment, TVL narratives, and 
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Universe Filter (apply before entry)
 - Protocol must have active Sherlock coverage with a documented expiry date
@@ -61,6 +62,8 @@ Governance tokens are priced primarily by retail sentiment, TVL narratives, and 
 - **Timing:** Enter short position 5–7 days before documented coverage lapse date, contingent on TVL drain signal being active
 - **Entry price:** Use VWAP of the 4-hour candle following TVL drain confirmation
 - **No TVL drain signal → no trade:** If TVL is flat or rising into lapse date, skip the trade (mechanism is not activating)
+
+## Exit Rules
 
 ### Exit Rules
 - **Primary exit:** 48 hours after coverage lapse date (T+2 post-lapse)

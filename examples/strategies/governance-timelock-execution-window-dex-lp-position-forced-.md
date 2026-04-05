@@ -57,7 +57,8 @@ This is not pattern-based. The following are **contractually enforced**:
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Trigger Conditions (all must be met)
 - [ ] A timelock-queued transaction is identified that contains LP withdrawal calldata from Pool A AND LP deposit calldata into Pool B
@@ -78,6 +79,8 @@ This is not pattern-based. The following are **contractually enforced**:
 - Entry: same 2–6 hour window before execution
 - Rationale: Pool A shallowing increases slippage and volatility; thin pools are more easily moved by sellers who know the migration is coming
 - This is the **weaker** leg — treat as optional and size at 25% of total position risk
+
+## Exit Rules
 
 ### Exit — LP Position
 - **Primary exit:** 48–72 hours post-migration execution
@@ -192,7 +195,7 @@ Abandon the strategy (during paper trading or live) if:
 
 ---
 
-## Risks — Honest Assessment
+## Risks
 
 ### High Severity
 
@@ -245,3 +248,7 @@ Arbitrum and Optimism have lower gas costs ($0.10–1.00 per transaction vs. $20
 This strategy has a **real structural mechanism** (timelock execution is deterministic, fee accrual is pro-rata) but a **thin and execution-sensitive edge**. The primary value is as a **monitoring framework** — the timelock queue is a free, real-time feed of guaranteed future liquidity events. The LP seeding trade is one application; others (directional perp trades on Pool A shallowing, governance token trades) may prove more tractable in backtest.
 
 **Recommended next step:** Build the historical event dataset from Tally + Etherscan before committing to backtest infrastructure. If fewer than 15 clean migration events exist in the 2021–2024 dataset, the strategy cannot be validated and should be parked.
+
+## Data Sources
+
+TBD

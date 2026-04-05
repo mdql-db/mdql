@@ -37,7 +37,8 @@ South Korean retail investors holding unrealised crypto losses sell positions be
 
 ---
 
-## Entry / Exit Rules
+## Entry Rules
+
 
 ### Instrument Options (in order of preference)
 
@@ -55,6 +56,8 @@ South Korean retail investors holding unrealised crypto losses sell positions be
 - **Entry condition:** Kimchi premium must be ≥ +1.0% at time of entry (confirms Korean premium exists to compress). If premium is already negative or below +0.5%, skip the trade — the compression has already occurred or the mechanism is absent.
 - **Entry confirmation (optional filter):** 7-day rolling Kimchi premium must be declining vs. the 30-day average. This confirms the compression trend has begun.
 - **Entry price:** Market order on Hyperliquid BTC-PERP at open of Dec 20 candle. No limit chasing — the edge is calendar-based, not price-level based.
+
+## Exit Rules
 
 ### Exit Rules
 

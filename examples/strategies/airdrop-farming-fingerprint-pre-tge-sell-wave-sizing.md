@@ -78,7 +78,8 @@ Sell Pressure Index (SPI) = ESS / (Circulating_Supply_at_TGE × FDV_implied_pric
 
 ---
 
-## Entry / Exit Rules
+## Entry Rules
+
 
 ### Pre-conditions (all must be met)
 
@@ -102,6 +103,8 @@ Sell Pressure Index (SPI) = ESS / (Circulating_Supply_at_TGE × FDV_implied_pric
 
 **Tertiary (spot only, no perp):**
 - Do not trade. Spot short requires borrowing; borrow rates at TGE are unpredictable and can exceed the edge.
+
+## Exit Rules
 
 ### Exit
 

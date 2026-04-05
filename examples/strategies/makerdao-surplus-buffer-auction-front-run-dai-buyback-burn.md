@@ -74,7 +74,8 @@ function flap() external returns (uint id) {
 
 ---
 
-## Entry / Exit Rules
+## Entry Rules
+
 
 ### Entry Signal
 
@@ -88,6 +89,8 @@ function flap() external returns (uint id) {
 **Instrument:** MKR/USDC perp on Hyperliquid OR MKR spot on any liquid venue
 
 **Entry:** Market order at next candle open after all conditions confirmed. Do not chase intraday.
+
+## Exit Rules
 
 ### Exit Signal (take profit / event completion)
 
@@ -187,7 +190,7 @@ Abandon the strategy (do not paper trade or go live) if ANY of the following are
 
 ---
 
-## Risks (Honest Assessment)
+## Risks
 
 ### High Severity
 

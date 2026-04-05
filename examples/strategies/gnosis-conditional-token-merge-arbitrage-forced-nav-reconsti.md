@@ -53,7 +53,8 @@ This is encoded in the deployed, immutable `ConditionalTokens.sol` contract. No 
 
 ---
 
-## Entry / Exit Rules
+## Entry Rules
+
 
 ### Entry Conditions (ALL must be met simultaneously)
 
@@ -74,6 +75,8 @@ This is encoded in the deployed, immutable `ConditionalTokens.sol` contract. No 
 4. Calculate: `net_spread = gross_spread - gas_cost_USD / position_size - slippage_estimate`
 5. If `net_spread > 0.02`: execute both buys atomically (same transaction via multicall if possible)
 6. Record: condition ID, collateral address, YES token address, NO token address, prices paid, gas paid, expected resolution date
+
+## Exit Rules
 
 ### Exit Rules
 - **Primary exit:** Hold to on-chain resolution. Monitor `ConditionResolution` event on `ConditionalTokens` contract. Call `redeemPositions()` within 24 hours of resolution event
@@ -181,7 +184,7 @@ Abandon the strategy (live or in backtest) if ANY of the following occur:
 
 ---
 
-## Risks — Honest Assessment
+## Risks
 
 ### High Severity
 

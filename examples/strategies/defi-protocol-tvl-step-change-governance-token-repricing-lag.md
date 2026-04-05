@@ -13,7 +13,7 @@ created: "2026-04-03"
 pipeline_stage: "Pre-backtest (step 2 of 9)"
 ---
 
-## 1. Hypothesis
+## Hypothesis
 
 When a DeFi protocol experiences a genuine withdrawal-driven TVL drop exceeding 15% within a 1-hour window, the protocol's governance token price on CEXes and DEXes lags the on-chain signal by 10–120 minutes. This lag exists because most market participants monitor price charts and order flow, not smart contract state variables. The TVL drop is a *leading* indicator of governance token selling pressure because the capital has already left the protocol but the governance token holder has not yet sold — or the market has not yet processed the implication of the exit. The trade is: short the governance token perp immediately after confirming a genuine withdrawal event, before the price catches up to the on-chain reality.
 
@@ -21,7 +21,7 @@ When a DeFi protocol experiences a genuine withdrawal-driven TVL drop exceeding 
 
 ---
 
-## 2. Structural Mechanism
+## Structural Mechanism
 
 ### Why the lag must exist (causal chain)
 
@@ -54,7 +54,7 @@ Start with AAVE, COMP, CRV, UNI — all have liquid perps on Hyperliquid and suf
 
 ---
 
-## 3. Signal Construction
+## Signal Construction
 
 ### Step 1: TVL Monitoring
 
@@ -124,7 +124,7 @@ If the token has already dropped >5%, the market has partially or fully priced t
 
 ---
 
-## 4. Entry Rules
+## Entry Rules
 
 **Instrument:** Governance token perpetual future on Hyperliquid (AAVE-PERP, COMP-PERP, CRV-PERP, UNI-PERP).
 
@@ -138,7 +138,7 @@ If the token has already dropped >5%, the market has partially or fully priced t
 
 ---
 
-## 5. Exit Rules
+## Exit Rules
 
 **Primary exits (whichever triggers first):**
 
@@ -166,7 +166,7 @@ Hyperliquid funding rates can make short positions expensive. Do not hold throug
 
 ---
 
-## 6. Position Sizing
+## Position Sizing
 
 **Base position size:** 1% of portfolio per signal.
 
@@ -188,7 +188,7 @@ Hyperliquid funding rates can make short positions expensive. Do not hold throug
 
 ---
 
-## 7. Backtest Methodology
+## Backtest Methodology
 
 ### Phase 1: Signal Extraction (Weeks 1–2)
 
@@ -243,7 +243,7 @@ Test whether Type A events have significantly better signal quality than Types B
 
 ---
 
-## 8. Go-Live Criteria
+## Go-Live Criteria
 
 All of the following must be satisfied before committing real capital:
 
@@ -262,7 +262,7 @@ All of the following must be satisfied before committing real capital:
 
 ---
 
-## 9. Kill Criteria
+## Kill Criteria
 
 Immediately halt live trading and return to research if any of the following occur:
 
@@ -280,7 +280,7 @@ Immediately halt live trading and return to research if any of the following occ
 
 ---
 
-## 10. Risks
+## Risks
 
 ### Risk 1: Noise event rate (HIGH probability, MEDIUM impact)
 Many TVL drops are routine yield migrations, rebalances, or protocol-internal movements. The classification filter (Rules A–D) reduces but does not eliminate this. **Mitigation:** Rule C (single-block concentration) and the manual classification work in backtest Phase 4 are designed to isolate high-conviction events. Accept that false positive rate may be 30–50% and size accordingly.
@@ -305,7 +305,7 @@ COMP and CVX perps may have insufficient liquidity on Hyperliquid for even $50K 
 
 ---
 
-## 11. Data Sources
+## Data Sources
 
 | Data Type | Source | Granularity | Cost | Notes |
 |-----------|--------|-------------|------|-------|
@@ -321,7 +321,7 @@ COMP and CVX perps may have insufficient liquidity on Hyperliquid for even $50K 
 
 ---
 
-## 12. Implementation Checklist
+## Implementation Checklist
 
 **Pre-backtest (current stage):**
 - [ ] Build DefiLlama TVL pull script for AAVE, COMP, CRV, UNI (2021–present)
@@ -352,7 +352,7 @@ COMP and CVX perps may have insufficient liquidity on Hyperliquid for even $50K 
 
 ---
 
-## 13. Open Research Questions
+## Open Research Questions
 
 These questions must be answered by the backtest before go-live:
 

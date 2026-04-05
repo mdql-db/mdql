@@ -48,7 +48,8 @@ The mechanism is real. The alpha is probabilistic, not guaranteed. This is why t
 
 ---
 
-## Entry / Exit Rules
+## Entry Rules
+
 
 ### Leg 1: Short (Tax-Loss Selling Pressure)
 
@@ -63,6 +64,8 @@ The mechanism is real. The alpha is probabilistic, not guaranteed. This is why t
 **Entry:** Open short positions on **November 1** (or first trading day of November), equal-weighted across selected assets.
 
 **Entry execution:** TWAP over the first trading session to avoid moving illiquid markets.
+
+## Exit Rules
 
 **Exit:** Close all short positions on **December 28** (three days before year-end to avoid the most volatile window and potential short squeezes from thin holiday liquidity).
 

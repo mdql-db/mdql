@@ -13,7 +13,7 @@ created: "2026-04-04"
 pipeline_stage: "Pre-backtest (step 2 of 9)"
 ---
 
-## 1. Hypothesis
+## Hypothesis
 
 Grayscale's remaining closed-end trusts and certain European crypto ETPs calculate NAV using a fixed daily reference price (typically a 4:00 PM ET crypto benchmark). When the underlying asset moves materially *after* the NAV fixing window but *before* trust shares trade the next session, the trust's published NAV becomes stale relative to spot. This creates a predictable, temporary discount or premium in the trust's share price at the next open — one that must mechanically compress as the market prices in the overnight move. A delta-hedged position (long/short the trust, offset with an opposing perp position) captures this compression without taking directional crypto exposure.
 
@@ -23,7 +23,7 @@ The edge is **not** that prices tend to revert. The edge is that the trust's NAV
 
 ---
 
-## 2. Structural Mechanism
+## Structural Mechanism
 
 ### 2a. Why the gap exists
 
@@ -55,7 +55,7 @@ Without the perp hedge, this is a leveraged directional crypto bet dressed up as
 
 ---
 
-## 3. Universe Definition
+## Universe Definition
 
 ### Eligible instruments (as of 2026)
 
@@ -90,7 +90,7 @@ Before any backtest, confirm for each instrument:
 
 ---
 
-## 4. Entry Rules
+## Entry Rules
 
 ### Trigger condition
 
@@ -141,7 +141,7 @@ For GDLC (multi-asset):
 
 ---
 
-## 5. Exit Rules
+## Exit Rules
 
 ### Primary exit: Intraday reversion
 
@@ -165,7 +165,7 @@ This is a strict rule. The strategy is explicitly an intraday convergence trade.
 
 ---
 
-## 6. Position Sizing
+## Position Sizing
 
 ### Base sizing
 
@@ -193,7 +193,7 @@ Perp notional = trust notional × delta of underlying per trust share (from pros
 
 ---
 
-## 7. Backtest Methodology
+## Backtest Methodology
 
 ### Data requirements
 
@@ -230,7 +230,7 @@ Run the same analysis on GBTC *before* its ETF conversion (pre-January 2024). GB
 
 ---
 
-## 8. Go-Live Criteria
+## Go-Live Criteria
 
 All of the following must be satisfied before paper trading begins:
 
@@ -245,7 +245,7 @@ All of the following must be satisfied before paper trading begins:
 
 ---
 
-## 9. Kill Criteria
+## Kill Criteria
 
 Stop the strategy immediately if any of the following occur:
 
@@ -260,7 +260,7 @@ Stop the strategy immediately if any of the following occur:
 
 ---
 
-## 10. Risks
+## Risks
 
 ### Risk 1: No exploitable gap exists (primary risk)
 The market may already efficiently price in overnight crypto moves into trust share prices at open. If professional traders are monitoring this, the gap is arbed away before retail can act. **Mitigation:** Backtest validates this before any capital is deployed.
@@ -285,7 +285,7 @@ GDLC's NAV depends on BTC, ETH, SOL, XRP, and ADA. If SOL rallies 10% overnight 
 
 ---
 
-## 11. Data Sources
+## Data Sources
 
 | Source | Data | Access | Cost |
 |--------|------|--------|------|
@@ -299,7 +299,7 @@ GDLC's NAV depends on BTC, ETH, SOL, XRP, and ADA. If SOL rallies 10% overnight 
 
 ---
 
-## 12. Open Questions (Pre-Backtest Research Tasks)
+## Open Questions (Pre-Backtest Research Tasks)
 
 1. **What is the exact NAV fixing methodology for each remaining Grayscale trust?** (Is it a single 4 PM print, a TWAP, or a specific index like XBX? This determines how "stale" the NAV actually is.)
 2. **Are any remaining trusts borrowable at IBKR?** (Call the securities lending desk — this is the single most important pre-backtest question.)
@@ -309,7 +309,7 @@ GDLC's NAV depends on BTC, ETH, SOL, XRP, and ADA. If SOL rallies 10% overnight 
 
 ---
 
-## 13. Summary Assessment
+## Summary Assessment
 
 | Dimension | Assessment |
 |-----------|------------|

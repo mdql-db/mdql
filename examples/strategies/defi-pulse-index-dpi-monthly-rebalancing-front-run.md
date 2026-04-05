@@ -73,7 +73,8 @@ DPI AUM has declined significantly from its 2021 peak (~$600M) to the ~$20–40M
 
 ---
 
-## Entry and Exit Rules
+## Entry Rules
+
 
 ### Pre-trade checklist (T-48h to T-24h)
 
@@ -97,6 +98,8 @@ DPI AUM has declined significantly from its 2021 peak (~$600M) to the ~$20–40M
 - Short perp on constituent tokens where `current_weight > target_weight + 2%`
 - Entry: Hyperliquid perp or equivalent
 - Venue: perp DEX with sufficient OI
+
+## Exit Rules
 
 ### Exit
 

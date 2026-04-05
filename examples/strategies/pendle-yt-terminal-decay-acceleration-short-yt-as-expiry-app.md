@@ -13,13 +13,13 @@ created: "2026-04-04"
 pipeline_stage: "Pre-backtest (step 2 of 9)"
 ---
 
-## 1. Hypothesis
+## Hypothesis
 
 Pendle Yield Tokens (YT) are contractually obligated to expire at zero. Their price is the present value of remaining yield cash flows over a finite, known time window. As expiry approaches, the time component of that valuation collapses non-linearly — accelerating in the final 30 days in a manner structurally identical to options theta decay. Retail participants buying YT for yield speculation systematically misprice this decay, treating YT like a perpetual yield instrument rather than a wasting asset. The result: YT tokens frequently trade at implied yields materially above the actual underlying yield in the final weeks before expiry, creating a predictable overpricing that must converge to zero by a contractually fixed date. Shorting YT 30 days before expiry and holding to zero captures this guaranteed convergence. The edge is not "YT tends to fall" — it is "YT MUST reach zero, and the path is accelerating."
 
 ---
 
-## 2. Structural Mechanism
+## Structural Mechanism
 
 ### 2.1 What YT Is
 
@@ -70,7 +70,7 @@ The result: YT implied yield (derived from market price) exceeds actual underlyi
 
 ---
 
-## 3. Entry Rules
+## Entry Rules
 
 ### 3.1 Universe Selection
 
@@ -130,7 +130,7 @@ Enter when:
 
 ---
 
-## 4. Exit Rules
+## Exit Rules
 
 ### 4.1 Primary Exit — Hold to Expiry
 
@@ -159,7 +159,7 @@ Because the primary structure is mint-and-sell-YT + hold-PT:
 
 ---
 
-## 5. Position Sizing
+## Position Sizing
 
 ### 5.1 Per-Trade Sizing
 
@@ -191,7 +191,7 @@ Higher overpricing = larger expected edge = larger position, but never exceed li
 
 ---
 
-## 6. Expected Return Profile
+## Expected Return Profile
 
 ### 6.1 Return Components
 
@@ -221,7 +221,7 @@ This seems small — but the PT redemption runs concurrently, and the strategy c
 
 ---
 
-## 7. Backtest Methodology
+## Backtest Methodology
 
 ### 7.1 Data Requirements
 
@@ -274,7 +274,7 @@ Pendle subgraph endpoint: `https://api.thegraph.com/subgraphs/name/pendle-financ
 
 ---
 
-## 8. Go-Live Criteria
+## Go-Live Criteria
 
 All of the following must be satisfied:
 
@@ -291,7 +291,7 @@ All of the following must be satisfied:
 
 ---
 
-## 9. Kill Criteria
+## Kill Criteria
 
 Abandon or pause the strategy if:
 
@@ -307,7 +307,7 @@ Abandon or pause the strategy if:
 
 ---
 
-## 10. Risks
+## Risks
 
 ### 10.1 Protocol Risk (HIGH CONCERN)
 Pendle smart contract exploit would affect both YT and PT positions. Mitigation: position size limits, diversification across underlying assets, monitor audit status continuously.
@@ -335,7 +335,7 @@ If the underlying APY drops sharply after entry, the YT was "correctly" priced a
 
 ---
 
-## 11. Data Sources
+## Data Sources
 
 | Source | URL / Access Method | Data |
 |--------|---------------------|------|
@@ -349,7 +349,7 @@ If the underlying APY drops sharply after entry, the YT was "correctly" priced a
 
 ---
 
-## 12. Open Questions for Research
+## Open Questions for Research
 
 Before backtesting begins, the following must be answered:
 
@@ -365,7 +365,7 @@ Before backtesting begins, the following must be answered:
 
 ---
 
-## 13. Strategy Relationships
+## Strategy Relationships
 
 | Related Strategy | Relationship |
 |-----------------|--------------|
@@ -375,7 +375,7 @@ Before backtesting begins, the following must be answered:
 
 ---
 
-## 14. Summary Scorecard
+## Summary Scorecard
 
 | Dimension | Assessment |
 |-----------|------------|

@@ -1,0 +1,8 @@
+[workspace]
+members = [
+    "crates/mdql-core",
+    "crates/mdql",
+    "crates/mdql-web",
+    "python",
+]
+resolver = "2"

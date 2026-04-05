@@ -55,7 +55,8 @@ The only hard edge is the **OI ceiling mechanic on the short leg**: if a GM pool
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Signal Detection
 
@@ -79,6 +80,8 @@ The only hard edge is the **OI ceiling mechanic on the short leg**: if a GM pool
 - **Instrument:** Perpetual future on the low-APR pool's underlying asset on Hyperliquid
 - **Entry:** Only if secondary signal also fires (`oi_utilization ≥ 0.80` on the losing pool). Market order at same candle as long leg entry.
 - **Direction:** Short
+
+## Exit Rules
 
 ### Exit Rules (apply to both legs independently)
 

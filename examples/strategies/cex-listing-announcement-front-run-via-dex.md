@@ -46,7 +46,7 @@ Strategy 3.2 in the archetype catalogue is generic. This strategy specifies the 
 
 ---
 
-## Proposed Backtest Methodology
+## Backtest Methodology
 
 ### Scope
 
@@ -272,15 +272,3 @@ For paper trading, simulate fills using DexScreener price at the 15-minute mark 
 Track per-trade: entry price, entry timestamp, announcement source, DEX pool used, pool liquidity at entry, estimated slippage, listing-live timestamp, exit price, exit reason, gross return, net return after fees.
 
 Store in a JSON state file analogous to `experiments/paper_state.json`.
-
----
-
-## What Would Invalidate This Hypothesis
-
-- Backtest shows median return <5% after 2% slippage across 2022–2024 events
-- Backtest shows clear year-over-year decay to near-zero by 2024 (strategy is already dead)
-- Pre-announcement drift analysis shows >80% of moves occur before announcement, leaving insufficient residual edge
-- Detection latency tests show Zunid consistently arrives 30+ minutes after announcement, by which time price has already moved >25%
-- Paper trading produces median return <5% after 10 closed trades
-
-Any one of these outcomes is sufficient to

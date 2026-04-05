@@ -52,7 +52,8 @@ The $0.50 redemption is not a market expectation — it is a smart contract inva
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Monitoring (Pre-Entry)
 
@@ -76,6 +77,8 @@ The $0.50 redemption is not a market expectation — it is a smart contract inva
 - Buy YES and NO in equal USDC notional amounts simultaneously (or within 60 seconds).
 - Use limit orders at mid + 0.5% to avoid moving a thin book.
 - If one leg fills and the other does not within 60 seconds, cancel the unfilled leg and exit the filled leg at market. Do not hold a one-sided position.
+
+## Exit Rules
 
 ### Exit
 
@@ -155,7 +158,7 @@ Compare returns against simply holding USDC (risk-free rate) for the same hold p
 
 ---
 
-## Go-Live Criteria (Paper Trading Threshold)
+## Go-Live Criteria
 
 All of the following must be satisfied before paper trading:
 
@@ -169,7 +172,7 @@ All of the following must be satisfied before paper trading:
 
 ---
 
-## Kill Criteria (Abandon Strategy)
+## Kill Criteria
 
 - Backtest finds fewer than 10 qualifying events in 3+ years of history → insufficient frequency, not worth building infrastructure.
 - Vote-flip rate > 35% in backtest → early vote signal is unreliable.
@@ -180,7 +183,7 @@ All of the following must be satisfied before paper trading:
 
 ---
 
-## Risks (Honest Assessment)
+## Risks
 
 | Risk | Severity | Probability | Mitigation |
 |------|----------|-------------|------------|
@@ -198,7 +201,7 @@ All of the following must be satisfied before paper trading:
 
 ---
 
-## Data Sources (Consolidated)
+## Data Sources
 
 | Resource | URL / Endpoint |
 |----------|---------------|

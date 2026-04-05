@@ -191,7 +191,7 @@ Abandon the strategy if ANY of the following occur:
 
 ---
 
-## Risks — Honest Assessment
+## Risks
 
 **Risk 1: Universe extinction (HIGH probability, HIGH impact)**
 Frax v3 is now predominantly collateralized. The pure algo mint mechanism that creates this edge is being engineered away across the industry post-UST. The strategy may have excellent historical logic but no future firing opportunities. This is the primary reason the score is 5/10 and not higher.
@@ -231,3 +231,7 @@ Protocols can upgrade their peg-defense contracts, changing the mint formula or 
 - sUSD: `0x57Ab1ec28D129707052df4dF418D58a2D46d5f51` (Ethereum)
 
 **Manual override requirement:** Given the low frequency and high stakes of each event, a human should review and approve each trade before execution during paper trading phase. Do not fully automate until at least 5 live paper trades have been reviewed.
+
+## Data Sources
+
+TBD

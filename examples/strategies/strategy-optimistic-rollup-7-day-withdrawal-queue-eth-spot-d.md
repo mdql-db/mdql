@@ -14,13 +14,13 @@ created: "2026-04-04"
 pipeline_stage: "Pre-backtest (step 2 of 9)"
 ---
 
-## 1. One-Line Summary
+## One-Line Summary
 
 When fast-exit bridge fees for ETH L2→L1 withdrawals are cheaper than 7-day ETH perp funding carry, collect the spread by paying the bridge fee, receiving L1 ETH immediately, and going long ETH perp to earn funding — a mechanical arbitrage between two prices for the same underlying constraint: the cost of time.
 
 ---
 
-## 2. Hypothesis
+## Hypothesis
 
 The 7-day optimistic rollup challenge window is a hard protocol constraint. It creates a two-tier market for ETH liquidity:
 
@@ -49,7 +49,7 @@ In that window, an arbitrageur can:
 
 ---
 
-## 3. Structural Mechanism
+## Structural Mechanism
 
 ### Why the constraint is real
 
@@ -78,7 +78,7 @@ This is the same structure as covered interest rate parity violations in FX: the
 
 ---
 
-## 4. Entry Rules
+## Entry Rules
 
 ### Signal conditions (all must be true simultaneously)
 
@@ -110,7 +110,7 @@ Signal fires when: net_spread > 3% APR (minimum viable after costs)
 
 ---
 
-## 5. Exit Rules
+## Exit Rules
 
 ### Primary exit: funding rate normalisation
 
@@ -138,7 +138,7 @@ Signal fires when: net_spread > 3% APR (minimum viable after costs)
 
 ---
 
-## 6. Position Sizing
+## Position Sizing
 
 ### Constraints
 
@@ -168,7 +168,7 @@ Scale up only after 10+ live trades with positive expectancy confirmed.
 
 ---
 
-## 7. Backtest Methodology
+## Backtest Methodology
 
 ### What we are testing
 
@@ -229,7 +229,7 @@ Step 8: Sensitivity analysis: vary the 3% threshold, 7-day cap, exit trigger
 
 ---
 
-## 8. Go-Live Criteria
+## Go-Live Criteria
 
 Before allocating real capital beyond paper trading:
 
@@ -243,7 +243,7 @@ Before allocating real capital beyond paper trading:
 
 ---
 
-## 9. Kill Criteria
+## Kill Criteria
 
 Abandon the strategy if any of the following are confirmed:
 
@@ -259,7 +259,7 @@ Abandon the strategy if any of the following are confirmed:
 
 ---
 
-## 10. Risks
+## Risks
 
 ### Risk 1: Bridge smart contract exploit
 **Severity:** Catastrophic (total loss of bridged capital)
@@ -291,7 +291,7 @@ Abandon the strategy if any of the following are confirmed:
 
 ---
 
-## 11. Data Sources
+## Data Sources
 
 | Data | Source | Access | Update Frequency |
 |---|---|---|---|
@@ -306,7 +306,7 @@ Abandon the strategy if any of the following are confirmed:
 
 ---
 
-## 12. Implementation Notes
+## Implementation Notes
 
 ### Monitoring script (pseudocode)
 
@@ -339,7 +339,7 @@ Do not automate the bridge leg without extensive testing — a bug in bridge aut
 
 ---
 
-## 13. Next Steps
+## Next Steps
 
 1. **Data acquisition:** Pull Hyperliquid ETH funding rate history (full available history) and Dune bridge utilisation data
 2. **Fee reconstruction:** Build the bridge_fee ≈ f(utilisation) model from Hop/Across documentation and validate against any available historical quotes

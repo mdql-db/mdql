@@ -57,7 +57,8 @@ The mechanism is not "tends to happen." The regulatory order creates a legal obl
 
 ---
 
-## Entry / Exit Rules
+## Entry Rules
+
 
 ### Leg 1: Native Token Short (Primary)
 
@@ -68,6 +69,8 @@ The mechanism is not "tends to happen." The regulatory order creates a legal obl
 - Use perpetual futures on Hyperliquid or spot short (borrow) if perp unavailable.
 
 **Entry price:** Market order at open of first full trading hour after confirmation. Do not chase — if price has already dropped >20% from pre-announcement levels, skip (edge is gone).
+
+## Exit Rules
 
 **Exit rules (first trigger wins):**
 - **Time exit:** Close 100% of position on Day 30 post-announcement, or 48 hours before the stated withdrawal deadline (whichever comes first).
@@ -186,7 +189,7 @@ Abandon the strategy if any of the following occur:
 
 ---
 
-## Risks — Honest Assessment
+## Risks
 
 **High severity:**
 
@@ -214,3 +217,7 @@ Abandon the strategy if any of the following occur:
 - **Funding rate check:** Before entering native token short on perp, check current funding rate. If funding is already deeply negative (market is crowded short), the trade may be too late or too expensive.
 - **Withdrawal deadline tracking:** Maintain a calendar of stated withdrawal deadlines. The exit rule (48 hours before deadline) requires knowing the exact deadline date.
 - **Tax jurisdiction:** Regulatory actions in smaller jurisdictions (e.g., a single EU member state) may not trigger global withdrawal pressure. Weight events by the regulator's jurisdictional reach.
+
+## Data Sources
+
+TBD
