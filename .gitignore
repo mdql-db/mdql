@@ -13,3 +13,6 @@ build/
 # Rust
 target/
 _mdql_index/
+*.dylib
+*.so
+*.dSYM/
