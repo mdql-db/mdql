@@ -1,0 +1,188 @@
+"""MDQL command-line interface."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Optional
+
+import typer
+
+from mdql.errors import MdqlError
+from mdql.loader import load_table
+from mdql.projector import format_results
+from mdql.schema import load_schema
+
+app = typer.Typer(
+    name="mdql",
+    help="A strict Markdown database with SQL-like queries.",
+    no_args_is_help=True,
+)
+
+
+@app.command()
+def validate(
+    folder: Path = typer.Argument(..., help="Path to table folder"),
+) -> None:
+    """Validate all markdown files in a table folder."""
+    try:
+        schema, rows, errors = load_table(folder)
+    except MdqlError as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1)
+
+    valid_count = len(rows)
+    error_files = {e.file_path for e in errors}
+    invalid_count = len(error_files)
+
+    if errors:
+        for err in errors:
+            typer.echo(str(err), err=True)
+        typer.echo(f"\n{valid_count} valid, {invalid_count} invalid", err=True)
+        raise typer.Exit(1)
+    else:
+        typer.echo(f"All {valid_count} files valid in table '{schema.table}'")
+
+
+@app.command()
+def inspect(
+    folder: Path = typer.Argument(..., help="Path to table folder"),
+    file: Optional[str] = typer.Option(None, "--file", "-f", help="Inspect a single file"),
+    format: str = typer.Option("table", "--format", help="Output format: table, json, csv"),
+    truncate: int = typer.Option(80, "--truncate", "-t", help="Max chars per cell in table mode"),
+) -> None:
+    """Inspect normalized rows from a table folder."""
+    try:
+        schema, rows, errors = load_table(folder)
+    except MdqlError as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1)
+
+    if file:
+        rows = [r for r in rows if r["path"] == file]
+        if not rows:
+            typer.echo(f"File '{file}' not found or invalid", err=True)
+            raise typer.Exit(1)
+
+    typer.echo(format_results(rows, output_format=format, truncate=truncate))
+
+
+@app.command()
+def schema(
+    folder: Path = typer.Argument(..., help="Path to table or database folder"),
+) -> None:
+    """Print the effective schema for a table or entire database."""
+    from mdql.database import DATABASE_FILENAME
+
+    is_db = (folder / DATABASE_FILENAME).exists()
+
+    if is_db:
+        try:
+            from mdql.database import load_database_config
+            db_config = load_database_config(folder)
+        except MdqlError as e:
+            typer.echo(f"Error: {e}", err=True)
+            raise typer.Exit(1)
+
+        typer.echo(f"Database: {db_config.name}")
+        typer.echo()
+
+        # Find all table subdirectories
+        table_dirs = sorted(
+            d for d in folder.iterdir()
+            if d.is_dir() and (d / "_schema.md").exists()
+        )
+
+        for td in table_dirs:
+            try:
+                s = load_schema(td)
+            except MdqlError as e:
+                typer.echo(f"Error loading {td.name}: {e}", err=True)
+                continue
+            _print_table_schema(s)
+            typer.echo()
+
+        if db_config.foreign_keys:
+            typer.echo("Foreign keys:")
+            for fk in db_config.foreign_keys:
+                typer.echo(f"  {fk.from_table}.{fk.from_column} -> {fk.to_table}.{fk.to_column}")
+    else:
+        try:
+            s = load_schema(folder)
+        except MdqlError as e:
+            typer.echo(f"Error: {e}", err=True)
+            raise typer.Exit(1)
+        _print_table_schema(s)
+
+
+def _print_table_schema(s) -> None:
+    """Print schema details for a single table."""
+    typer.echo(f"Table: {s.table}")
+    typer.echo(f"  Primary key: {s.primary_key}")
+    typer.echo(f"  H1 required: {s.h1_required}")
+    if s.h1_must_equal_frontmatter:
+        typer.echo(f"  H1 must equal: frontmatter.{s.h1_must_equal_frontmatter}")
+
+    typer.echo("  Frontmatter:")
+    for name, fd in s.frontmatter.items():
+        req = "required" if fd.required else "optional"
+        enum_str = f" enum={fd.enum}" if fd.enum else ""
+        typer.echo(f"    {name}: {fd.type} ({req}){enum_str}")
+
+    if s.sections:
+        typer.echo("  Sections:")
+        for name, sd in s.sections.items():
+            req = "required" if sd.required else "optional"
+            typer.echo(f"    {name}: {sd.type} ({req})")
+
+    typer.echo("  Rules:")
+    typer.echo(f"    reject_unknown_frontmatter: {s.reject_unknown_frontmatter}")
+    typer.echo(f"    reject_unknown_sections: {s.reject_unknown_sections}")
+    typer.echo(f"    reject_duplicate_sections: {s.reject_duplicate_sections}")
+    typer.echo(f"    normalize_numbered_headings: {s.normalize_numbered_headings}")
+
+
+@app.command()
+def query(
+    folder: Path = typer.Argument(..., help="Path to table or database folder"),
+    sql: str = typer.Argument(..., help="SQL-like query string"),
+    format: str = typer.Option("table", "--format", help="Output format: table, json, csv"),
+    truncate: int = typer.Option(80, "--truncate", "-t", help="Max chars per cell in table mode"),
+) -> None:
+    """Run a SQL-like query against a table or database."""
+    from mdql.database import DATABASE_FILENAME
+    from mdql.query_engine import execute_join_query, execute_query
+    from mdql.query_parser import parse_query
+
+    try:
+        q = parse_query(sql)
+    except MdqlError as e:
+        typer.echo(f"Query error: {e}", err=True)
+        raise typer.Exit(1)
+
+    try:
+        if q.join is not None:
+            # JOIN query: folder must be a database directory
+            from mdql.loader import load_database
+            db_config, tables, errors = load_database(folder)
+            result_rows, result_columns = execute_join_query(q, tables)
+        else:
+            # Single-table query
+            is_db = (folder / DATABASE_FILENAME).exists()
+            if is_db:
+                # Folder is a database dir; find the table subdirectory
+                from mdql.loader import load_database
+                db_config, tables, errors = load_database(folder)
+                if q.table not in tables:
+                    typer.echo(f"Error: table '{q.table}' not found in database", err=True)
+                    raise typer.Exit(1)
+                schema, rows = tables[q.table]
+            else:
+                schema, rows, errors = load_table(folder)
+            result_rows, result_columns = execute_query(q, rows, schema)
+    except MdqlError as e:
+        typer.echo(f"Query error: {e}", err=True)
+        raise typer.Exit(1)
+
+    typer.echo(
+        format_results(result_rows, columns=result_columns, output_format=format, truncate=truncate)
+    )
