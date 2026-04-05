@@ -57,6 +57,7 @@ mechanism: 6
 categories:
   - funding-rates
 created: "2026-04-04"
+modified: "2026-04-05"
 ---
 
 ## Hypothesis
@@ -71,6 +72,7 @@ Enter on the opposite side of the funding imbalance...
 - YAML frontmatter fields become metadata columns (`title`, `status`, `mechanism`, ...)
 - H2 sections become content columns (`Hypothesis`, `Entry Rules`, ...)
 - The `path` (filename) is the implicit primary key
+- `created` and `modified` are reserved timestamp fields, auto-managed by `mdql stamp`
 - All columns are queryable with SQL-like syntax
 
 ## `_mdql.md` files
@@ -205,6 +207,20 @@ Show normalized rows.
 uv run mdql inspect examples/strategies/ -f funding-rate-fade.md --format json
 ```
 
+### `mdql stamp <folder>`
+
+Add or update `created` and `modified` timestamps in all data files.
+
+```bash
+uv run mdql stamp examples/strategies/
+# Stamped 159 files: 0 created set, 159 modified updated
+```
+
+- `created` is set to today's date if missing, never overwritten
+- `modified` is always updated to today's date
+- Both are ISO date strings (`"YYYY-MM-DD"`) in frontmatter
+- These fields are reserved globally — schemas don't need to declare them, and they're never rejected as unknown fields
+
 ### `mdql schema <folder>`
 
 Print the effective schema. Works on a single table or the whole database:
@@ -212,6 +228,45 @@ Print the effective schema. Works on a single table or the whole database:
 ```bash
 uv run mdql schema examples/
 ```
+
+## Pandas integration
+
+MDQL has optional pandas support. Install with:
+
+```bash
+uv pip install mdql[pandas]
+```
+
+### One-liner
+
+```python
+from mdql.pandas import load_dataframe
+
+df = load_dataframe("examples/strategies/")
+```
+
+### Two-step (when you already have rows)
+
+```python
+from mdql.loader import load_table
+from mdql.pandas import to_dataframe
+
+schema, rows, errors = load_table("examples/strategies/")
+df = to_dataframe(rows, schema)
+```
+
+Schema types map to pandas dtypes automatically:
+
+| MDQL type  | pandas dtype       |
+|------------|--------------------|
+| `string`   | `string`           |
+| `int`      | `Int64` (nullable) |
+| `float`    | `Float64` (nullable) |
+| `bool`     | `boolean` (nullable) |
+| `date`     | `datetime64[ns]`   |
+| `string[]` | Python lists       |
+
+Validation errors are handled via the `errors` parameter: `"warn"` (default), `"raise"`, or `"ignore"`.
 
 ## Design principles
 
@@ -228,7 +283,7 @@ uv run mdql schema examples/
 uv run pytest
 ```
 
-102 tests covering parser, validator, query engine, CLI, and integration with real data.
+122 tests covering parser, validator, query engine, CLI, timestamps, pandas integration, and integration with real data.
 
 ## Project structure
 
@@ -243,6 +298,8 @@ src/mdql/
   query_parser.py   # SQL subset -> Query AST (recursive descent)
   query_engine.py   # execute queries over in-memory rows
   projector.py      # format output (table/json/csv)
+  pandas.py         # optional pandas integration (load_dataframe, to_dataframe)
+  stamp.py          # auto-manage created/modified timestamps
   cli.py            # typer CLI
 ```
 
