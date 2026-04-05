@@ -59,7 +59,8 @@ Between HF entering 1.00–1.05 and actual liquidation:
 
 ---
 
-## Entry / Exit Rules
+## Entry Rules
+
 
 ### Signal Generation
 
@@ -82,6 +83,8 @@ Between HF entering 1.00–1.05 and actual liquidation:
 - Position HF has been below 1.05 for >10 minutes without liquidation (bots may have already front-run the signal; overhang may be partially cleared)
 - Collateral asset has already moved >1.5% down in the prior 5 minutes (signal may be stale)
 - Funding rate on Hyperliquid perp is >0.05% per 8h in the short direction (carry cost too high)
+
+## Exit Rules
 
 ### Exit
 
@@ -210,7 +213,7 @@ If criteria are met: move to **paper trading for 30 days** with real-time on-cha
 
 ---
 
-## Risks — Honest Assessment
+## Risks
 
 ### High Severity
 
@@ -239,7 +242,7 @@ If criteria are met: move to **paper trading for 30 days** with real-time on-cha
 
 ---
 
-## Data Sources — Specific Endpoints
+## Data Sources
 
 ```
 # Aave V3 Subgraph (Ethereum mainnet)

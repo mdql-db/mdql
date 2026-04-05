@@ -42,7 +42,8 @@ When a new Pendle or Spectra yield market is deployed for an ERC-4626 vault, the
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Monitoring
 - Subscribe to `CreateNewMarket` (Pendle) or equivalent factory event on Ethereum mainnet and Arbitrum via WebSocket RPC or The Graph
@@ -73,6 +74,8 @@ When a new Pendle or Spectra yield market is deployed for an ERC-4626 vault, the
 - Buy PT via Pendle Router (`PendleRouterV3`) using `swapExactTokenForPt()` or equivalent
 - Set slippage tolerance: accept up to 50bps slippage on entry (if slippage exceeds 50bps, abort — edge is consumed)
 - Execute within 30 minutes of pool deployment; after 2 hours, re-check gap; if gap < 150bps, abort
+
+## Exit Rules
 
 ### Exit
 - **Primary:** Hold PT to maturity; redeem via `redeemPyToToken()` on Pendle router

@@ -52,7 +52,8 @@ This is not a tendency — it is a mechanical sequence with one probabilistic es
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Universe
 Top 50 protocol treasuries by AUM, limited to those using Gnosis Safe (covers ~90% of major DeFi protocols). Initial list:
@@ -87,6 +88,8 @@ Top 50 protocol treasuries by AUM, limited to those using Gnosis Safe (covers ~9
 - **Instrument:** Short the governance token via Hyperliquid perpetual futures (where listed) or spot short via margin on a CEX
 - **Entry timing:** Market order within 5 minutes of signal detection
 - **Entry price:** Record mid-price at signal detection for P&L tracking
+
+## Exit Rules
 
 ### Exit
 - **Primary exit:** Close position 4 hours after on-chain execution confirmation (tx hash appears in `isExecuted = true` response)
@@ -175,7 +178,7 @@ Top 50 protocol treasuries by AUM, limited to those using Gnosis Safe (covers ~9
 
 ---
 
-## Go-Live Criteria (Paper Trading Threshold)
+## Go-Live Criteria
 
 All of the following must be satisfied in backtest before paper trading:
 
@@ -212,7 +215,7 @@ All of the following must be satisfied in backtest before paper trading:
 
 ---
 
-## Risks (Honest Assessment)
+## Risks
 
 ### Risk 1: Cancellation (HIGH IMPACT, LOW-MEDIUM PROBABILITY)
 A transaction with M signatures can be cancelled by proposing a new transaction with the same nonce and collecting M signatures on the cancellation. Estimated cancellation rate for execution-ready txs: unknown — **this is the most important thing to measure in the backtest.** If >20%, the strategy's expected value degrades significantly. Mitigation: exit immediately on cancellation detection; 48h time stop limits exposure.

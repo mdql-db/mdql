@@ -48,7 +48,8 @@ Negative funding persists because net long OI exceeds net short OI on the perp. 
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Entry Conditions (ALL must be true)
 
@@ -65,6 +66,8 @@ Negative funding persists because net long OI exceeds net short OI on the perp. 
 - **Leg 1:** Long perp at market open of the 3rd consecutive negative funding period
 - **Leg 2 (optional, for full basis trade):** Short spot on a CEX simultaneously
 - If running perp-only (no spot hedge): treat as a directional + funding income trade, size accordingly (see Position Sizing)
+
+## Exit Rules
 
 ### Exit Conditions (FIRST trigger wins)
 
@@ -197,7 +200,7 @@ Abandon the strategy (do not proceed to live trading) if ANY of the following ar
 
 ---
 
-## Risks — Honest Assessment
+## Risks
 
 **1. Negative funding can persist for weeks in bear markets (HIGH risk)**
 In 2022, BTC funding was negative for 30+ consecutive days. The 5-day max hold exit protects against this, but the strategy will take repeated small losses during sustained bear regimes. Mitigation: the 7-day positive prior filter should exclude entries during established bear trends, but it is not foolproof.
@@ -219,7 +222,7 @@ The basis trade requires near-simultaneous execution on two venues (Hyperliquid 
 
 ---
 
-## Data Sources — Summary
+## Data Sources
 
 | Resource | URL | Notes |
 |----------|-----|-------|

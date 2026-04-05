@@ -44,7 +44,8 @@ This is not "tends to happen" — it is mechanically enforced by bridge architec
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Universe
 Monitor these token/chain pairs (start narrow, expand after validation):
@@ -77,6 +78,8 @@ Gas cost estimation: use current gas price × estimated gas units for the specif
 - **Leg 1 (Long):** Buy token on discounted chain via DEX aggregator (0x or Paraswap). Execute as limit order within 0.1% of quoted price. Chain: whichever chain shows lower price.
 - **Leg 2 (Short):** Short equivalent USD notional on Hyperliquid perp. Use market order (perp liquidity is sufficient). Execute within 30 seconds of Leg 1 fill confirmation.
 - **Hedge ratio:** 1:1 notional (delta-neutral). Do not adjust for basis unless perp consistently trades at >0.2% premium/discount to spot.
+
+## Exit Rules
 
 ### Exit Conditions (first trigger wins)
 1. **Spread compression:** `net_spread < 0.1%` — close both legs simultaneously. Leg 1: sell spot on same chain or bridge to better-priced chain. Leg 2: close perp short.
@@ -224,7 +227,7 @@ This edge is **real but thin and contested**. The structural mechanism is sound 
 
 ---
 
-## Data Sources (Complete Reference)
+## Data Sources
 
 | Source | Endpoint | Data | Notes |
 |--------|----------|------|-------|

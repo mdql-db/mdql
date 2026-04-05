@@ -56,7 +56,8 @@ The edge is **not** that price always falls — it is that a known, contractuall
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Universe
 - Primary: CVX perpetual futures (check Hyperliquid, dYdX, or spot borrow on Aave/Morpho)
@@ -75,6 +76,8 @@ The edge is **not** that price always falls — it is that a known, contractuall
 - **Instrument:** CVX-PERP short (or spot borrow if perp unavailable)
 - **Order type:** Limit order within 0.3% of mid; if unfilled within 30 minutes, use market order
 - **Rationale for T-12h:** Early enough to capture pre-reset positioning, late enough to avoid multi-day carry cost
+
+## Exit Rules
 
 ### Exit Rules (first condition met)
 1. **Primary exit:** T+36h after epoch reset (Saturday ~12:00 UTC) — captures the bulk of the sell window without overstaying

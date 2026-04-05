@@ -38,7 +38,7 @@ This is **not** a bet that stETH will recover after a depeg. It is a bet that a 
 
 ---
 
-## Proposed Backtest Methodology
+## Backtest Methodology
 
 ### Dataset
 

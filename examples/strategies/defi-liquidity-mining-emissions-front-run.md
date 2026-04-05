@@ -50,7 +50,7 @@ The secondary difference is meaningful: unlocks *add* supply; emissions cliffs *
 
 ---
 
-## Proposed backtest methodology
+## Backtest Methodology
 
 ### Objective
 
@@ -155,7 +155,8 @@ plot_tvl_price_correlation(results)
 
 ---
 
-## Entry / exit rules
+## Entry Rules
+
 
 ### Entry
 
@@ -176,6 +177,8 @@ plot_tvl_price_correlation(results)
 | No concurrent major catalyst within ±7 days | Checked manually | Avoids event contamination |
 | Macro regime | BTC not in confirmed uptrend (>20% above 30d MA) | Bull market can overwhelm LP selling pressure |
 
+## Exit Rules
+
 ### Exit
 
 - **Primary exit:** Close short **5 calendar days after** the cliff date
@@ -194,7 +197,7 @@ plot_tvl_price_correlation(results)
 
 ---
 
-## Go-live criteria
+## Go-Live Criteria
 
 Deploy real capital when ALL of the following are met:
 
@@ -207,7 +210,7 @@ Deploy real capital when ALL of the following are met:
 
 ---
 
-## Kill criteria
+## Kill Criteria
 
 Kill immediately if:
 - After 5 paper trades: net P&L negative after fees → kill or redesign entry/exit windows
@@ -264,7 +267,7 @@ Both strategies short DeFi/alt tokens in event-driven windows. In a market-wide 
 
 ---
 
-## Data sources
+## Data Sources
 
 | Data | Source | Access method | Notes |
 |------|--------|---------------|-------|
@@ -274,3 +277,7 @@ Both strategies short DeFi/alt tokens in event-driven windows. In a market-wide 
 | TVL by protocol and pool | DeFiLlama API (`https://api.llama.fi/protocol/{slug}`) | Free, REST | Historical TVL available by day; pool-level TVL available for major protocols |
 | Token price history | Binance REST API (`GET /api/v3/klines`) | Free, public | Use for backtesting; fallback to CoinGecko for tokens not on Binance |
 | Current prices + funding rates | Hyperliquid API (`POST https://api.hyperliquid.xyz/info` with `metaAndAssetCtxs`) | Free | Same infrastructure as Strategy
+
+## Position Sizing
+
+TBD

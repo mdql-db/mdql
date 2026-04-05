@@ -13,7 +13,7 @@ created: "2026-04-04"
 pipeline_stage: "Pre-backtest (step 2 of 9)"
 ---
 
-## 1. Hypothesis
+## Hypothesis
 
 The Cosmos Liquid Staking Module enforces a hard protocol rule: no more than 25% of total staked ATOM may exist as tokenized liquid staked positions at any time. As cap utilization approaches 100%, rational actors race to mint before the window closes, mechanically widening the stATOM/ATOM premium. When the cap is hit, minting halts by smart contract enforcement, demand for new LSTs cannot be satisfied through minting, and the premium collapses as existing LST holders are forced to exit through DEX liquidity at a discount. This creates two distinct, directionally opposite, mechanically-caused price distortions — each tradeable with a clear trigger and exit.
 
@@ -21,7 +21,7 @@ The edge is **not** "LST premiums tend to widen near the cap." The edge is: **th
 
 ---
 
-## 2. Structural Mechanism
+## Structural Mechanism
 
 ### 2.1 The Hard Cap Rule
 
@@ -59,7 +59,7 @@ The cap decreases when: (a) LST holders redeem/unbond (21-day unbonding), or (b)
 
 ---
 
-## 3. Market Structure
+## Market Structure
 
 | Parameter | Detail |
 |-----------|--------|
@@ -72,7 +72,7 @@ The cap decreases when: (a) LST holders redeem/unbond (21-day unbonding), or (b)
 
 ---
 
-## 4. Signal Construction
+## Signal Construction
 
 ### 4.1 Cap Utilization Metric
 
@@ -113,7 +113,8 @@ Example: If bonded = 200M ATOM, cap = 25%, TotalLiquid = 45M ATOM → Utilizatio
 
 ---
 
-## 5. Entry and Exit Rules
+## Entry Rules
+
 
 ### 5.1 Phase 1 Trade (Long Premium Widening)
 
@@ -122,6 +123,8 @@ Example: If bonded = 200M ATOM, cap = 25%, TotalLiquid = 45M ATOM → Utilizatio
 - stATOM/ATOM premium currently < 1.5% (room to widen)
 - Confirm: no governance proposal to raise the cap is in voting period (check `cosmos/gov/v1/proposals?status=PROPOSAL_STATUS_VOTING_PERIOD`)
 - Execute: Buy stATOM on Osmosis; simultaneously short ATOM-PERP on Hyperliquid in equivalent notional
+
+## Exit Rules
 
 **Exit — Take Profit:**
 - stATOM premium widens to > 2.0% above redemption rate, OR
@@ -157,7 +160,7 @@ Example: If bonded = 200M ATOM, cap = 25%, TotalLiquid = 45M ATOM → Utilizatio
 
 ---
 
-## 6. Position Sizing
+## Position Sizing
 
 ### 6.1 Base Sizing
 
@@ -192,7 +195,7 @@ Max Position = MIN(
 
 ---
 
-## 7. Backtest Methodology
+## Backtest Methodology
 
 ### 7.1 Data Collection
 
@@ -241,7 +244,7 @@ For each identified event:
 
 ---
 
-## 8. Go-Live Criteria
+## Go-Live Criteria
 
 All of the following must be satisfied before deploying real capital:
 
@@ -255,7 +258,7 @@ All of the following must be satisfied before deploying real capital:
 
 ---
 
-## 9. Kill Criteria
+## Kill Criteria
 
 Immediately halt and close all positions if any of the following occur:
 
@@ -272,7 +275,7 @@ Immediately halt and close all positions if any of the following occur:
 
 ---
 
-## 10. Risks
+## Risks
 
 ### 10.1 Governance Risk (HIGH — primary risk)
 A governance proposal to raise the cap from 25% to 35% would immediately invalidate the Phase 1 thesis and potentially cause a sharp premium collapse mid-trade. **Mitigation:** Monitor governance proposals daily; exit immediately when any cap-related proposal enters voting period (7-day voting window provides exit time).
@@ -297,7 +300,7 @@ If a public dashboard begins tracking LSM cap utilization, the edge may become c
 
 ---
 
-## 11. Data Sources
+## Data Sources
 
 | Data Point | Source | Endpoint | Frequency |
 |------------|--------|----------|-----------|
@@ -318,7 +321,7 @@ If a public dashboard begins tracking LSM cap utilization, the edge may become c
 
 ---
 
-## 12. Implementation Checklist
+## Implementation Checklist
 
 ```
 Week 1:
@@ -351,7 +354,7 @@ Week 7+:
 
 ---
 
-## 13. Relationship to Other Zunid Strategies
+## Relationship to Other Zunid Strategies
 
 This strategy belongs to the **"Protocol Constraint Arbitrage"** family alongside:
 - **Pendle PT Maturity Convergence** (smart contract par redemption guarantee)

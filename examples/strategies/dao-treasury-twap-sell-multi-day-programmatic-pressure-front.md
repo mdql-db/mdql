@@ -261,7 +261,7 @@ All of the following must be satisfied before live deployment:
 
 ---
 
-## Kill Criteria (Post Go-Live)
+## Kill Criteria
 
 Suspend the strategy immediately if:
 

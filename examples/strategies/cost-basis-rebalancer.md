@@ -39,7 +39,7 @@ This is not a primary strategy. It's a background loop — a fraction of a perce
 
 ---
 
-## 1. Hypothesis
+## Hypothesis
 
 In a mean-reverting or range-bound asset, the current spot price repeatedly oscillates around some central tendency. By mechanically selling when price is above your average cost basis and buying when it is below — **but only when price is within a defined band around the EMA** — you:
 
@@ -61,7 +61,7 @@ The edge claim is **not** that this beats buy-and-hold in a bull market. It does
 
 ---
 
-## 2. Asset Selection
+## Asset Selection
 
 ### Primary Test Assets
 | Asset | Rationale |
@@ -94,7 +94,8 @@ Reasoning:
 
 ---
 
-## 3. Strategy Rules
+## Entry Rules
+
 
 ### 3.1 State Variables
 
@@ -185,7 +186,10 @@ Cost basis resets only if position goes to zero (full exit).
 
 ---
 
-## 4. Position Sizing and Risk Limits
+## Exit Rules
+
+Defined within Entry Rules section.
+## Position Sizing
 
 ### Capital Allocation
 - **Total allocated capital:** Define as a fixed pool, e.g., $100,000. Never exceed this without explicit manual override
@@ -207,7 +211,7 @@ A 60% drawdown on BTC (historically common) starting from initial deployment wou
 
 ---
 
-## 5. Backtest Methodology
+## Backtest Methodology
 
 ### Data
 - **Source:** Binance via CCXT or direct API export
@@ -273,7 +277,7 @@ Look for parameter robustness — edge should hold across a range of settings, n
 
 ---
 
-## 6. Go-Live Criteria
+## Go-Live Criteria
 
 All of the following must be satisfied before deploying real capital:
 
@@ -292,7 +296,7 @@ All of the following must be satisfied before deploying real capital:
 
 ---
 
-## 7. Kill Criteria
+## Kill Criteria
 
 Halt all activity and move to cash immediately if any of the following trigger:
 
@@ -310,7 +314,7 @@ Halt all activity and move to cash immediately if any of the following trigger:
 
 ---
 
-## 8. Risks
+## Risks
 
 ### Primary Risks
 
@@ -325,3 +329,7 @@ At G=1.5% and 0.10% taker fees each way, you need the trade to capture >0.20% ne
 **3. Basis Lock-In (Low Probability, High Impact)**
 If an asset drops significantly below cost basis and never fully recovers, realized PnL is zero and the unrealized loss is permanent. This is not a temporary drawdown — it's a capital destruction event.
 *Mitigation: Only run on BTC/ETH, enforce hard kill at 40
+
+## Data Sources
+
+TBD

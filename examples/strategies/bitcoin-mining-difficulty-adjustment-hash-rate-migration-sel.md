@@ -59,7 +59,8 @@ This is not an estimate — it is arithmetic. The only variable is the distribut
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Pre-adjustment monitoring
 - Poll `mempool.space/api/v1/difficulty-adjustment` every 6 hours
@@ -77,6 +78,8 @@ This is not an estimate — it is arithmetic. The only variable is the distribut
 - Enter short on BTC-USDC perpetual (Hyperliquid) within 3 blocks (~30 minutes) of confirmed adjustment
 - Use limit order at mid-price; if not filled within 5 minutes, use market order
 - Record entry price, exact difficulty change %, and calculated breakeven spread
+
+## Exit Rules
 
 ### Exit rules (first trigger wins)
 - **Primary exit:** Day 10 after entry, market order at open of that UTC day

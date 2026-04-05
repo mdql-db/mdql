@@ -63,7 +63,8 @@ Funding rate settlement at fixed 8-hour UTC timestamps (00:00, 08:00, 16:00) cre
 
 ---
 
-## Entry & Exit Rules
+## Entry Rules
+
 
 ### Timing reference
 All times relative to settlement timestamp T (00:00, 08:00, or 16:00 UTC).
@@ -73,6 +74,8 @@ All times relative to settlement timestamp T (00:00, 08:00, or 16:00 UTC).
 - **Direction:** SHORT the perp
 - **Order type:** Limit order posted at mid-price; if unfilled within 60 seconds, convert to aggressive limit (cross the spread by 0.5 ticks); if still unfilled at T − 8 minutes, cancel and skip this window
 - **Do not use market orders** — the 12-minute window is tight but not so tight that slippage from market orders is acceptable
+
+## Exit Rules
 
 ### Exit
 - **Primary exit:** T + 2 minutes (i.e., 00:02, 08:02, or 16:02 UTC)

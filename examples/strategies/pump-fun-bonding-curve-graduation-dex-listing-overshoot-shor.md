@@ -13,7 +13,7 @@ created: "2026-04-04"
 pipeline_stage: "Pre-backtest (step 2 of 9)"
 ---
 
-## 1. Hypothesis
+## Hypothesis
 
 When a Pump.fun token graduates to Raydium, the mechanical transition from bonding curve to open AMM pool triggers a predictable retail FOMO spike into thin liquidity. This spike is structurally unsustainable: the graduation event adds no new value, the initial liquidity pool is shallow (~$12K), and early bonding curve participants have been waiting for exactly this moment to exit. The token should mean-revert sharply within 15–90 minutes of the post-graduation peak.
 
@@ -23,7 +23,7 @@ When a Pump.fun token graduates to Raydium, the mechanical transition from bondi
 
 ---
 
-## 2. Structural Mechanism
+## Structural Mechanism
 
 ### 2a. The Hard-Coded Graduation Trigger
 
@@ -56,7 +56,7 @@ The mechanism is **game-theoretic and forced**: bonding curve holders MUST wait 
 
 ---
 
-## 3. Entry Rules
+## Entry Rules
 
 ### Pre-conditions (all must be true)
 - [ ] Token has graduated to Raydium within the last 15 minutes (confirmed via on-chain graduation event or Pump.fun API)
@@ -73,7 +73,7 @@ The mechanism is **game-theoretic and forced**: bonding curve holders MUST wait 
 
 ---
 
-## 4. Exit Rules
+## Exit Rules
 
 ### Take Profit
 - **Primary target:** 40% decline from entry price
@@ -93,7 +93,7 @@ The mechanism is **game-theoretic and forced**: bonding curve holders MUST wait 
 
 ---
 
-## 5. Position Sizing
+## Position Sizing
 
 ### Hard Limits
 - **Maximum position size:** $2,000 per trade (liquidity constraint — larger sizes create self-defeating slippage)
@@ -114,7 +114,7 @@ The mechanism is **game-theoretic and forced**: bonding curve holders MUST wait 
 
 ---
 
-## 6. Backtest Methodology
+## Backtest Methodology
 
 ### Data Requirements
 - **Pump.fun graduation events:** Available via Pump.fun API (`/coins` endpoint filtered by `raydium_pool` field becoming non-null) or on-chain via Solana RPC (program ID: `6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P`)
@@ -160,7 +160,7 @@ Segment results by: (a) SOL price trend at time of graduation, (b) number of gra
 
 ---
 
-## 7. Go-Live Criteria
+## Go-Live Criteria
 
 All of the following must be satisfied before paper trading begins:
 
@@ -173,7 +173,7 @@ All of the following must be satisfied before paper trading begins:
 
 ---
 
-## 8. Kill Criteria
+## Kill Criteria
 
 Abandon or pause the strategy if any of the following occur:
 
@@ -196,7 +196,7 @@ Abandon or pause the strategy if any of the following occur:
 
 ---
 
-## 9. Risks
+## Risks
 
 ### Execution Risks (HIGH)
 - **Slippage:** $12–50K pools mean even $1K orders move price 2–5%. Modeled at 3% but could be worse.
@@ -221,7 +221,7 @@ The **5/10 score reflects genuine uncertainty**. The graduation mechanic is cont
 
 ---
 
-## 10. Data Sources
+## Data Sources
 
 | Data Type | Source | Cost | Notes |
 |---|---|---|---|
@@ -237,7 +237,7 @@ The **5/10 score reflects genuine uncertainty**. The graduation mechanic is cont
 
 ---
 
-## 11. Related Strategies & Variants
+## Related Strategies & Variants
 
 - **Variant A (Preferred):** Long exit signal for bonding curve participants — exit long positions at graduation spike peak rather than holding through reversion. Simpler execution, no short selling required.
 - **Variant B:** Long the graduation itself (buy at $69K graduation price, sell into the spike) — this is the other side of the same trade, with better execution feasibility but requires being in the bonding curve phase.

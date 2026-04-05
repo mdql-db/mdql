@@ -67,7 +67,8 @@ If a claim is denied, cover holders may attempt to exit their positions in the c
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Instrument Selection
 
@@ -96,6 +97,8 @@ If a claim is denied, cover holders may attempt to exit their positions in the c
 **Entry split:**
 - 60% of position in covered protocol token short (higher conviction, more liquid)
 - 40% of position in NXM/wNXM short (structural NAV mechanism, less liquid)
+
+## Exit Rules
 
 ### Exit Rules
 

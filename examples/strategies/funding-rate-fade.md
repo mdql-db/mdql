@@ -1,6 +1,6 @@
 ---
 title: "Funding Rate Fade"
-status: HYPOTHESIS
+status: "HYPOTHESIS"
 mechanism: 6
 implementation: 8
 safety: 6
@@ -9,8 +9,9 @@ composite: 2592
 categories:
   - funding-rates
   - exchange-structure
-created: "2025-01-27"
 pipeline_stage: "Pre-backtest (step 2 of 9)"
+created: "2025-01-27"
+modified: "2026-04-05"
 ---
 
 ## Hypothesis
@@ -39,7 +40,7 @@ This is distinct from simple carry farming (holding the funded side indefinitely
 
 ---
 
-## Proposed backtest methodology
+## Backtest Methodology
 
 ### Data required
 
@@ -119,7 +120,7 @@ Generate a random entry baseline: for each real entry event, generate 5 randomly
 
 ---
 
-## Entry rules
+## Entry Rules
 
 **Universe:** All Hyperliquid perps with 30-day average open interest > $10M. Start with BTC, ETH only; expand after baseline is validated.
 
@@ -139,7 +140,7 @@ Generate a random entry baseline: for each real entry event, generate 5 randomly
 
 ---
 
-## Exit rules
+## Exit Rules
 
 Monitor open positions after every 8h funding settlement and every 1h candle close.
 
@@ -165,7 +166,7 @@ Monitor open positions after every 8h funding settlement and every 1h candle clo
 
 ---
 
-## Position sizing
+## Position Sizing
 
 **Paper trading phase:**
 - $200 notional per trade, no leverage
@@ -182,7 +183,7 @@ Monitor open positions after every 8h funding settlement and every 1h candle clo
 
 ---
 
-## Go-live criteria
+## Go-Live Criteria
 
 Deploy real capital when all of the following are true:
 
@@ -195,7 +196,7 @@ Deploy real capital when all of the following are true:
 
 ---
 
-## Kill criteria
+## Kill Criteria
 
 **Kill immediately (any time):**
 - Any single live trade loses > 8% of notional
@@ -252,7 +253,7 @@ Mitigation: Enforce a minimum 90-day history requirement before enabling the sig
 
 ---
 
-## Data sources
+## Data Sources
 
 | Data | Source | Access method |
 |---|---|---|

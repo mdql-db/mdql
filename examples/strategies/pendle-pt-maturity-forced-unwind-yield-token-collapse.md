@@ -185,7 +185,7 @@ Immediately halt strategy and exit all positions if ANY of the following occur:
 
 ---
 
-## Risk Register
+## Risks
 
 | Risk | Severity | Probability | Mitigation |
 |---|---|---|---|

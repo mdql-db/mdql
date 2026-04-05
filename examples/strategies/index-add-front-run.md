@@ -13,7 +13,7 @@ created: "2026-04-04"
 pipeline_stage: "Pre-backtest (step 2 of 9)"
 ---
 
-## 1. Hypothesis
+## Hypothesis
 
 When a token is announced for addition to a major crypto index (CoinDesk 20, CF Benchmarks, Bloomberg Galaxy Crypto Index, etc.), passive funds and ETPs tracking those indices are obligated to purchase the token before the effective rebalancing date. This creates a predictable, time-bounded demand shock. Informed market participants who front-run this demand should be able to buy at announcement and sell into the passive fund buying pressure before or at rebalancing completion.
 
@@ -28,7 +28,7 @@ When a token is announced for addition to a major crypto index (CoinDesk 20, CF 
 
 ---
 
-## 2. Indices in Scope
+## Indices in Scope
 
 | Index | Provider | Announcement Lead Time | Rebalancing Frequency | Notes |
 |---|---|---|---|---|
@@ -42,7 +42,7 @@ When a token is announced for addition to a major crypto index (CoinDesk 20, CF 
 
 ---
 
-## 3. Proposed Backtest Methodology
+## Backtest Methodology
 
 ### 3.1 Data Collection (Manual Phase First)
 
@@ -130,7 +130,8 @@ Split the event set and test separately:
 
 ---
 
-## 4. Entry and Exit Rules
+## Entry Rules
+
 
 ### 4.1 Entry
 
@@ -165,7 +166,10 @@ No fixed take-profit. Let the position run to the scheduled exit. The edge is th
 
 ---
 
-## 5. Position Sizing
+## Exit Rules
+
+Defined within Entry Rules section.
+## Position Sizing
 
 - **Base position size**: 2% of portfolio per event
 - **Rationale**: Small sample, unproven edge, binary event risk; cannot risk more than a minor allocation
@@ -176,7 +180,7 @@ No fixed take-profit. Let the position run to the scheduled exit. The edge is th
 
 ---
 
-## 6. Go-Live Criteria
+## Go-Live Criteria
 
 All of the following must be satisfied before committing real capital:
 
@@ -194,7 +198,7 @@ All of the following must be satisfied before committing real capital:
 
 ---
 
-## 7. Kill Criteria
+## Kill Criteria
 
 Stop trading immediately and return to hypothesis status if any of the following occur:
 
@@ -209,7 +213,7 @@ Stop trading immediately and return to hypothesis status if any of the following
 
 ---
 
-## 8. Risks
+## Risks
 
 ### 8.1 Core Risks
 
@@ -252,7 +256,7 @@ Some additions may be low-cap tokens with thin order books. The 5% ADV position 
 
 ---
 
-## 9. Data Sources
+## Data Sources
 
 | Data Type | Source | Access Method | Cost |
 |---|---|---|---|

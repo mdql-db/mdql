@@ -46,7 +46,8 @@ The mechanism is contractual and game-theoretic, not statistical:
 
 ---
 
-## Entry / Exit Rules
+## Entry Rules
+
 
 ### Leg 1 — Directional Short (New Token)
 
@@ -82,6 +83,9 @@ Only execute if: old token discount to swap ratio NAV > 5% at T-5.
 
 ---
 
+## Exit Rules
+
+Defined within Entry Rules section.
 ## Position Sizing
 
 **Base position size:** 1% of portfolio per event (directional short only)
@@ -203,7 +207,7 @@ Abandon the strategy (both paper and live) if any of the following occur:
 
 ---
 
-## Risks — Honest Assessment
+## Risks
 
 **High severity:**
 
@@ -229,7 +233,7 @@ Abandon the strategy (both paper and live) if any of the following occur:
 
 ---
 
-## Data Sources Summary
+## Data Sources
 
 | Source | Purpose | Access |
 |--------|---------|--------|

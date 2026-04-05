@@ -70,7 +70,8 @@ The supply contraction is guaranteed. The price response is not. The strategy be
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Data inputs (polled every 5 minutes)
 
@@ -96,6 +97,8 @@ eth_price_change_2h = (current_price - price_120min_ago) / price_120min_ago
 **Entry instrument:** ETH perpetual on Hyperliquid (primary) or ETH spot (secondary if funding is elevated).
 
 **Entry execution:** Market order at next 5-minute poll after all conditions met. No limit orders — the edge is time-sensitive.
+
+## Exit Rules
 
 ### Exit conditions (first triggered wins)
 

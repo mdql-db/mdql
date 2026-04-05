@@ -55,7 +55,8 @@ This is **probabilistic, not guaranteed**. The mechanism is real but has escape 
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Signal Construction
 
@@ -80,6 +81,8 @@ This is **probabilistic, not guaranteed**. The mechanism is real but has escape 
 - Entry instrument: Long ETH/USDC perpetual on Hyperliquid (liquid, no Arbitrum-specific execution required) OR long ARB/USDC spot on Arbitrum DEX if execution infrastructure exists
 - Entry size: See position sizing section
 - Entry timing: Signal confirmed → enter within next 2 Arbitrum blocks (~0.5 seconds) — this is NOT HFT, just prompt execution
+
+## Exit Rules
 
 ### Exit
 
@@ -154,7 +157,7 @@ Rationale: Expected edge is small (5–15bps price impact over 15–30 minutes).
 
 ---
 
-## Go-Live Criteria (Paper Trading)
+## Go-Live Criteria
 
 Before moving to paper trading, backtest must show:
 
@@ -180,7 +183,7 @@ Abandon the strategy if any of the following occur:
 
 ---
 
-## Risks (Honest Assessment)
+## Risks
 
 ### Primary Risk: Too Many Escape Valves
 The single biggest risk is that sophisticated market makers with pre-positioned Arbitrum inventory absorb all demand before any measurable price impact occurs. If Wintermute holds $50M USDC on Arbitrum at all times, no CCTP queue depth matters. **This is the most likely reason the strategy fails.**
@@ -207,3 +210,7 @@ When the CCTP queue is large, it often means a major protocol event is happening
 This strategy has a real mechanical foundation but a weak edge. The CCTP attestation delay is a genuine hard constraint, but the market has built sufficient redundancy (multiple bridges, market maker inventory, CEX routing) that the constraint rarely creates durable price distortion. The strategy is worth backtesting to quantify how often the escape valves fail simultaneously — those are the rare high-quality signals. If signal frequency is too low for systematic trading, this should be filed as a **manual opportunistic trade** to execute during known high-demand events (major Arbitrum protocol launches, airdrop claims) rather than an automated strategy.
 
 **Hypothesis — needs backtest. Do not trade until backtest complete.**
+
+## Data Sources
+
+TBD

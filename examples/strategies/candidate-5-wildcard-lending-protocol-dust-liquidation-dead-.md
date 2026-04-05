@@ -61,7 +61,8 @@ The mechanism varies by protocol. Verify which applies before entering any trade
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Pre-Trade Checklist (must complete before entry)
 - [ ] Confirm which coverage mechanism applies (Safety Module slash vs. treasury liquidation vs. debt auction)
@@ -76,6 +77,8 @@ The mechanism varies by protocol. Verify which applies before entering any trade
 - **Entry timing:** Within 2 hours of vote confirmation (before timelock execution)
 - **Instrument:** Perpetual futures short on Hyperliquid (AAVE-PERP, COMP-PERP) or spot short via borrowing
 - **Entry price:** Market order at open of next 1-hour candle after trigger confirmation
+
+## Exit Rules
 
 ### Exit
 - **Primary exit:** On-chain execution of the bad debt coverage transaction (monitor mempool/block explorer for `slash()` call or `flop` auction settlement) + 24 hours

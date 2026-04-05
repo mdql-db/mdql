@@ -51,7 +51,8 @@ Quorum is a hard binary threshold encoded in the governance contract. There is n
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Universe
 Tokens with liquid perp markets on Hyperliquid, Binance, or dYdX. Minimum 24h perp volume > $5M to ensure entry/exit without excessive slippage. Focus on: UNI, COMP, AAVE, MKR, ARB, OP, ENS, CRV, LDO.
@@ -73,6 +74,8 @@ A proposal qualifies for the trade if ALL of the following are true:
 - **Entry price:** Market order on perp, or limit order within 0.1% of mid.
 - **Entry timing:** As soon as criteria are confirmed, not at a fixed time. Check every 30 minutes in the final 6-hour window.
 - **Direction:** Short perp.
+
+## Exit Rules
 
 ### Exit
 - **Primary exit:** Market close immediately after on-chain resolution is confirmed (next block after deadline). Do not hold through timelock or execution delay.

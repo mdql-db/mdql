@@ -53,7 +53,8 @@ Unlike a prediction market on a political event, a "BTC above $X by date Y" mark
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Universe
 Only Polymarket markets of the form:
@@ -77,6 +78,8 @@ Only Polymarket markets of the form:
 - NO ≥ 0.92 (YES ≤ 0.08) → Short BTC/ETH perp on Hyperliquid
 - Use market order (speed matters; this is a short-duration trade)
 - Enter at 1x leverage only during backtesting phase
+
+## Exit Rules
 
 ### Exit Conditions (first trigger wins)
 

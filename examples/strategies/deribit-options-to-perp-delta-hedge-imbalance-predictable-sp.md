@@ -13,7 +13,7 @@ created: "2026-04-04"
 pipeline_stage: "Pre-backtest (step 2 of 9)"
 ---
 
-## 1. Hypothesis
+## Hypothesis
 
 When a large options block trades on Deribit, the market-maker on the other side of that trade is structurally obligated to delta-hedge in the underlying spot or perpetual futures market. This hedge flow is not probabilistic — it is a mechanical requirement of running a delta-neutral book. The block trade is publicly observable in real time via Deribit's WebSocket feed. The delta of the block is calculable from public inputs (strike, expiry, spot price, implied volatility). Therefore, the direction and approximate magnitude of the imminent hedge flow are knowable before the hedge is fully executed.
 
@@ -23,7 +23,7 @@ The tradeable edge: enter a perp position in the direction of the expected hedge
 
 ---
 
-## 2. Structural Mechanism
+## Structural Mechanism
 
 ### 2.1 Why Dealers Must Hedge
 
@@ -60,7 +60,7 @@ This creates a window — typically 30 seconds to 5 minutes — between the obse
 
 ---
 
-## 3. Entry Rules
+## Entry Rules
 
 ### 3.1 Data Feed Requirements
 
@@ -120,7 +120,7 @@ On detection of a block trade with non-null `block_trade_id`:
 
 ---
 
-## 4. Exit Rules
+## Exit Rules
 
 ### 4.1 Primary Exit: Time-Based
 
@@ -143,7 +143,7 @@ On detection of a block trade with non-null `block_trade_id`:
 
 ---
 
-## 5. Position Sizing
+## Position Sizing
 
 - **Maximum per trade:** 0.5% of total capital
 - **Rationale:** This is a high-frequency, low-edge strategy. Individual trade expectancy is small. Position size must be small enough that a string of 10 consecutive losses (realistic in a 30-second window strategy) does not exceed 5% drawdown.
@@ -153,7 +153,7 @@ On detection of a block trade with non-null `block_trade_id`:
 
 ---
 
-## 6. Backtest Methodology
+## Backtest Methodology
 
 ### 6.1 Data Requirements
 
@@ -204,7 +204,7 @@ For each historical block trade:
 
 ---
 
-## 7. Go-Live Criteria
+## Go-Live Criteria
 
 All of the following must be satisfied before allocating real capital:
 
@@ -220,7 +220,7 @@ All of the following must be satisfied before allocating real capital:
 
 ---
 
-## 8. Kill Criteria
+## Kill Criteria
 
 Stop trading and return to research if any of the following occur:
 
@@ -236,7 +236,7 @@ Stop trading and return to research if any of the following occur:
 
 ---
 
-## 9. Risks
+## Risks
 
 ### 9.1 Execution Risk (HIGH)
 The 30-second window is tight. Any latency in the signal pipeline (WebSocket lag, computation delay, order routing) compresses the window further. If entry is delayed beyond 60 seconds, the hedge may already be complete and the edge is gone. **Mitigation:** Co-locate signal processing close to Deribit WebSocket endpoint; pre-compute delta lookup tables; use direct API order submission, not GUI.
@@ -261,7 +261,7 @@ Holding a perp position for 3 minutes incurs negligible funding (funding is char
 
 ---
 
-## 10. Data Sources
+## Data Sources
 
 | Source | Data | Access | Cost |
 |--------|------|--------|------|
@@ -273,7 +273,7 @@ Holding a perp position for 3 minutes incurs negligible funding (funding is char
 
 ---
 
-## 11. Open Research Questions
+## Open Research Questions
 
 Before committing to backtest build, answer these:
 
@@ -285,7 +285,7 @@ Before committing to backtest build, answer these:
 
 ---
 
-## 12. Next Steps
+## Next Steps
 
 | Step | Owner | Timeline |
 |------|-------|----------|

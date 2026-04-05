@@ -37,7 +37,7 @@ This is a hypothesis — needs backtest.
 
 ---
 
-## Proposed backtest methodology
+## Backtest Methodology
 
 ### Data inputs
 
@@ -116,7 +116,8 @@ The strategy only advances if the max pain signal beats the random baseline by a
 
 ---
 
-## Entry/exit rules
+## Entry Rules
+
 
 **Data pipeline (runs Wednesday 04:00 UTC to allow time for computation):**
 1. Pull Deribit OI for current week's Friday expiry
@@ -133,6 +134,8 @@ The strategy only advances if the max pain signal beats the random baseline by a
 - Order type: Limit order at mid (or market if unfilled within 5 minutes)
 - Leverage: 1x initially (expand to 2x after forward validation)
 
+## Exit Rules
+
 **Exit:**
 - Primary: Friday 08:00 UTC, market order
 - Stop loss: 4% adverse move from entry price (checked hourly)
@@ -142,7 +145,7 @@ The strategy only advances if the max pain signal beats the random baseline by a
 
 ---
 
-## Position sizing
+## Position Sizing
 
 **Paper trading phase:**
 - $300 notional per trade (BTC and ETH separately, not both simultaneously)
@@ -155,7 +158,7 @@ The strategy only advances if the max pain signal beats the random baseline by a
 
 ---
 
-## Go-live criteria
+## Go-Live Criteria
 
 All four conditions must be met before deploying real capital:
 
@@ -168,7 +171,7 @@ Paper trading uses exact Hyperliquid API calls (same code as live) with real pri
 
 ---
 
-## Kill criteria
+## Kill Criteria
 
 ### Kill during backtesting
 
@@ -209,7 +212,7 @@ Paper trading uses exact Hyperliquid API calls (same code as live) with real pri
 
 ---
 
-## Data sources
+## Data Sources
 
 | Data | Source | Endpoint / Method |
 |---|---|---|

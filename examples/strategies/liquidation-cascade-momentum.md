@@ -21,7 +21,7 @@ Monitor perpetual futures markets for dense clusters of estimated liquidation le
 
 ---
 
-## 1. Hypothesis
+## Hypothesis
 
 ### Core Claim
 
@@ -55,7 +55,7 @@ The edge is **mechanical predictability**: the cascade is not driven by informat
 
 ---
 
-## 2. Data Sources — Honest Audit
+## Data Sources
 
 This section is critical. If the data is not available, the strategy is not buildable.
 
@@ -124,7 +124,7 @@ This section is critical. If the data is not available, the strategy is not buil
 
 ---
 
-## 3. Strategy Variants
+## Strategy Variants
 
 Given the data constraints, define two sub-variants:
 
@@ -138,7 +138,7 @@ Use Binance liquidation WebSocket stream. When liquidation volume in a rolling w
 
 ---
 
-## 4. Definitions and Parameters
+## Definitions and Parameters
 
 ### 4.1 Liquidation Cluster (Variant A — Estimated)
 
@@ -165,7 +165,7 @@ A **cascade trigger** occurs when:
 
 ---
 
-## 5. Entry Rules
+## Entry Rules
 
 ### 5.1 Variant A — Predictive Entry
 
@@ -198,7 +198,7 @@ A **cascade trigger** occurs when:
 
 ---
 
-## 6. Exit Rules
+## Exit Rules
 
 ### 6.1 Take Profit — Tiered
 
@@ -229,7 +229,7 @@ Exit remaining position if:
 
 ---
 
-## 7. Position Sizing
+## Position Sizing
 
 ### 7.1 Base Rules
 
@@ -267,7 +267,7 @@ For a $5,000–$10,000 account:
 
 ---
 
-## 8. Backtest Methodology
+## Backtest Methodology
 
 ### 8.1 Data Requirements
 
@@ -321,3 +321,15 @@ Max positions:   2 simultaneous
 | Total trades | ≥ 100 (statistical significance) |
 | Win rate | ≥ 45% |
 | Average R:R (actual) | ≥ 1.5
+
+## Risks
+
+TBD
+
+## Kill Criteria
+
+TBD
+
+## Go-Live Criteria
+
+TBD

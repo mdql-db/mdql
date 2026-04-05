@@ -50,7 +50,8 @@ The mechanism is real but not contractually forced:
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Universe
 - Instrument: BTC perpetual futures on Hyperliquid (execution), tracked against CME BTC front-month (reference)
@@ -69,6 +70,8 @@ The mechanism is real but not contractually forced:
 | News filter | No major macro event during weekend (see Risks section for filter definition) |
 | VIX filter | VIX at Friday close < 30 (high-VIX regimes = news-driven moves, not quiet rebalancing) |
 | Entry timing | Market order at 5:05pm ET Sunday (5 minutes after CME open to avoid the first-minute spike) |
+
+## Exit Rules
 
 ### Exit Conditions (first trigger wins)
 | Exit | Rule |

@@ -47,7 +47,8 @@ This is not a tendency — it is a protocol rule encoded in BendDAO's smart cont
 
 ---
 
-## Entry / Exit Rules
+## Entry Rules
+
 
 ### Trigger Conditions (all must be met)
 
@@ -63,6 +64,8 @@ This is not a tendency — it is a protocol rule encoded in BendDAO's smart cont
 - **Primary:** Short BEND perpetual on Hyperliquid or Binance at market open of next 1-hour candle after trigger confirmation
 - **Secondary (optional, lower conviction):** Short APE perpetual if BAYC is the at-risk collection AND BAYC loans represent ≥$2M in BendDAO book
 - **Entry size:** Full position entered in one tranche (not scaled — the trigger is binary and time-sensitive)
+
+## Exit Rules
 
 ### Exit Rules
 

@@ -50,7 +50,8 @@ The vault's selling is mechanical and on-chain verifiable. The timing is fixed. 
 
 ---
 
-## Entry / Exit Rules
+## Entry Rules
+
 
 ### Morning Leg (Primary)
 
@@ -86,6 +87,9 @@ The vault's selling is mechanical and on-chain verifiable. The timing is fixed. 
 
 ---
 
+## Exit Rules
+
+Defined within Entry Rules section.
 ## Position Sizing
 
 - **Base size:** 0.5% of portfolio notional per leg (morning and afternoon treated as separate trades)
@@ -164,7 +168,7 @@ Abandon the strategy (or demote to archive) if any of the following occur:
 
 ---
 
-## Risks — Honest Assessment
+## Risks
 
 ### Mechanism Risks
 

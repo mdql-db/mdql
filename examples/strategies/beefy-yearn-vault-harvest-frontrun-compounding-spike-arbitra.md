@@ -49,7 +49,8 @@ This is **not** a "tends to happen" pattern. The mechanism is contractually enfo
 
 ---
 
-## Entry / Exit Rules
+## Entry Rules
+
 
 ### Vault Selection Criteria (pre-trade filter)
 - Vault must have ≥ 30 historical harvests (sufficient for frequency estimation)
@@ -70,6 +71,8 @@ This is **not** a "tends to happen" pattern. The mechanism is contractually enfo
 - **Entry timing:** Enter short at the start of the estimated harvest window
 - **Entry size:** See Position Sizing section
 - **Entry condition:** Confirm no harvest tx has occurred in the last `0.5 × median_interval` (avoid entering after a recent harvest)
+
+## Exit Rules
 
 ### Exit
 - **Primary exit:** Close short within 3 blocks of harvest tx confirmation (monitor target vault address for `Harvest` event)
@@ -194,7 +197,7 @@ Abandon the strategy if any of the following occur:
 
 ---
 
-## Risks — Honest Assessment
+## Risks
 
 ### High Severity
 

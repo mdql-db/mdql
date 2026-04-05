@@ -48,7 +48,7 @@ When market price falls below redemption NAV, the discount is not an opinion —
 
 ---
 
-## Proposed Backtest Methodology
+## Backtest Methodology
 
 ### Scope
 
@@ -131,7 +131,8 @@ Compare against:
 
 ---
 
-## Entry / Exit Rules
+## Entry Rules
+
 
 ### Pre-Entry Checklist (ALL must pass)
 
@@ -159,6 +160,8 @@ Compare against:
 | Short underlying | Short ETH perp on Hyperliquid in equivalent notional to LST position. This hedges ETH price exposure. |
 | Submit withdrawal | Immediately after LST purchase, submit withdrawal request on the LST protocol's UI or directly via contract call. This locks in the NAV. |
 | Record entry | Log entry price, redemption rate, discount at entry, queue length, expected wait, estimated gas. |
+
+## Exit Rules
 
 ### Exit
 
@@ -293,3 +296,7 @@ Deploy real capital when:
 
 ### 5. No Clean Perp Available for the Hedge
 **What happens:** Hyperliquid does not list stETH perps. The only available hedge is an ETH perp, which hed
+
+## Data Sources
+
+TBD

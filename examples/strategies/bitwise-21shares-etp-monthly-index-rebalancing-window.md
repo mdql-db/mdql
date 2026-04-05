@@ -13,7 +13,7 @@ created: "2026-04-04"
 pipeline_stage: "Pre-backtest (step 2 of 9)"
 ---
 
-## 1. Hypothesis
+## Hypothesis
 
 Publicly disclosed index methodologies for crypto basket ETPs (Bitwise BITW, 21Shares basket products) create calculable, directional flow obligations that must be executed by authorized participants (APs) on a fixed schedule. By computing the required rebalance trades in advance and positioning in the same direction before the execution window, we can extract a predictable price impact premium — particularly in smaller-cap, lower-liquidity constituents where AP flow represents a meaningful fraction of daily volume.
 
@@ -23,7 +23,7 @@ This is the crypto equivalent of S&P 500 index addition front-running, a well-do
 
 ---
 
-## 2. Structural Mechanism
+## Structural Mechanism
 
 ### Why this MUST happen (not just tends to happen)
 
@@ -66,7 +66,7 @@ We exit into AP buying/selling pressure
 
 ---
 
-## 3. Target Products
+## Target Products
 
 ### Primary targets (highest signal quality)
 
@@ -97,7 +97,7 @@ Only trade constituents where Impact Score > 0.5%. Below this threshold, the AP 
 
 ---
 
-## 4. Data Sources
+## Data Sources
 
 ### Required data (all public, mostly free)
 
@@ -127,7 +127,8 @@ Only trade constituents where Impact Score > 0.5%. Below this threshold, the AP 
 
 ---
 
-## 5. Entry and Exit Rules
+## Entry Rules
+
 
 ### Entry
 
@@ -149,6 +150,8 @@ Only trade constituents where Impact Score > 0.5%. Below this threshold, the AP 
 
 **Entry execution:** TWAP over 4–6 hours to avoid moving the market on entry. We are not the price-mover here; the AP is. We just need to be positioned before them.
 
+## Exit Rules
+
 ### Exit
 
 **Primary exit:** During the rebalance execution window (T+0 to T+2), as AP flow creates price impact. Exit into the AP-driven move.
@@ -164,7 +167,7 @@ Only trade constituents where Impact Score > 0.5%. Below this threshold, the AP 
 
 ---
 
-## 6. Position Sizing
+## Position Sizing
 
 ### Per-trade sizing
 
@@ -193,7 +196,7 @@ Max position size per constituent = MIN(
 
 ---
 
-## 7. Backtest Methodology
+## Backtest Methodology
 
 ### Scope
 
@@ -238,7 +241,7 @@ Break results down by:
 
 ---
 
-## 8. Go-Live Criteria
+## Go-Live Criteria
 
 All of the following must be satisfied before live deployment:
 
@@ -253,7 +256,7 @@ All of the following must be satisfied before live deployment:
 
 ---
 
-## 9. Kill Criteria
+## Kill Criteria
 
 **Immediate kill (stop trading, review):**
 
@@ -271,7 +274,7 @@ All of the following must be satisfied before live deployment:
 
 ---
 
-## 10. Risks
+## Risks
 
 ### Risk 1: AP execution timing uncertainty ⚠️ HIGH
 **Description:** We know the rebalance window (e.g., "first 3 business days of the month") but not the exact hour or day within that window. AP may execute on day 1 or day 3.
@@ -310,7 +313,7 @@ All of the following must be satisfied before live deployment:
 
 ---
 
-## 11. Open Questions (Pre-Backtest)
+## Open Questions (Pre-Backtest)
 
 These must be answered before the backtest is meaningful:
 
@@ -326,7 +329,7 @@ These must be answered before the backtest is meaningful:
 
 ---
 
-## 12. Next Steps
+## Next Steps
 
 | Step | Action | Owner | Timeline |
 |------|--------|-------|----------|
@@ -341,7 +344,7 @@ These must be answered before the backtest is meaningful:
 
 ---
 
-## 13. Relationship to Other Zunid Strategies
+## Relationship to Other Zunid Strategies
 
 **Complementary to token unlock shorts:** Both strategies exploit predictable, scheduled supply/demand events. Token unlocks are supply shocks; ETP rebalances are demand shocks (for additions) or supply shocks (for deletions). They can run simultaneously with low correlation.
 

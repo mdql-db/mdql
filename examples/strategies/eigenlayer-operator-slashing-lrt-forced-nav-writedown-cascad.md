@@ -62,7 +62,8 @@ Neither mechanism is instantaneous. The DEX pool's effective price is anchored t
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Pre-conditions (all must be true)
 1. `OperatorSlashed` event emitted on EigenLayer `AllocationManager` contract and confirmed in ≥1 block
@@ -83,6 +84,8 @@ nav_impact_pct = (slash_amount_ETH / lrt_total_restaked_ETH) * operator_allocati
 - **Entry size:** See Position Sizing section
 - **Entry timing:** Within 2 blocks of slash confirmation (target <30 seconds)
 - **Hedge leg:** Long ETH spot or ETH perp in equal notional to neutralize ETH beta
+
+## Exit Rules
 
 ### Exit
 **Primary exit (convergence):** Cover when `|LRT_DEX_price/ETH - post_slash_NAV| < 0.05%`

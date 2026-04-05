@@ -82,7 +82,8 @@ Priority screening criteria (in order):
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Entry Conditions (ALL must be met)
 
@@ -102,6 +103,8 @@ Priority screening criteria (in order):
   - Hedge ratio = (CEF shares × NAV per share) / crypto spot price
   - Example: 1,000 GBTC shares × $30 NAV = $30,000 notional → short $30,000 BTC perp
 - **Sizing:** See Position Sizing section
+
+## Exit Rules
 
 ### Exit Conditions
 

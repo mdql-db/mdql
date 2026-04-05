@@ -45,7 +45,8 @@ Direct redemption at NAV requires KYC whitelisting and minimum investment thresh
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Universe
 - **Primary:** OUSG (Ondo Finance) on Ethereum/Polygon DEXs (Uniswap v3, Curve)
@@ -64,6 +65,8 @@ Direct redemption at NAV requires KYC whitelisting and minimum investment thresh
 ### Direction
 - **Long:** DEX price < Expected next NAV − 15bps → Buy token on DEX
 - **Short:** DEX price > Expected next NAV + 15bps → Sell token on DEX (if short-selling mechanism exists; otherwise skip — do NOT use perps unless a liquid OUSG perp exists, which currently it does not)
+
+## Exit Rules
 
 ### Exit Rules
 1. **Primary exit:** Close position within 30 minutes of confirmed on-chain NAV update publication (monitor via Etherscan event logs for the NAV oracle update transaction)
@@ -163,7 +166,7 @@ Abandon the strategy if ANY of the following occur:
 
 ---
 
-## Risks — Honest Assessment
+## Risks
 
 ### Critical Risks
 
@@ -215,3 +218,7 @@ This strategy has a small opportunity set — perhaps 10–30 qualifying events 
 - **Priority 3:** The intraday yield proxy (SHY ETF) needs calibration against actual DTB3 daily changes before being used as a signal. Run a regression: `ΔDTB3 ~ ΔSHY_intraday` on daily data first.
 - **Expect data gaps:** OUSG and bIB01 are new protocols. Some NAV updates may be missing from on-chain data if done via proxy contracts. Check Ondo's GitHub for contract addresses.
 - **Do not data-mine:** Define the 15bps threshold and 10bps yield move threshold BEFORE running the backtest. Do not optimize these parameters on the backtest data.
+
+## Position Sizing
+
+TBD

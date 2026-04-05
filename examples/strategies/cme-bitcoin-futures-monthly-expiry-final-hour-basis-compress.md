@@ -45,7 +45,8 @@ The BRR is defined by CF Benchmarks methodology as the volume-weighted median pr
 
 ---
 
-## Entry / Exit Rules
+## Entry Rules
+
 
 ### Universe
 - Instrument: CME BTC front-month futures (continuous front-month roll, or specific monthly contract expiring that day)
@@ -65,6 +66,8 @@ The BRR is defined by CF Benchmarks methodology as the volume-weighted median pr
 
 ### Position Sizing
 See Position Sizing section below.
+
+## Exit Rules
 
 ### Exit Rules
 - **Primary exit:** Close both legs at 2:55pm London time (5 minutes before BRR window opens). Do NOT trade during the 3–4pm window.
@@ -201,7 +204,7 @@ At $77/BTC round-trip cost and a typical basis compression of $150–300, the tr
 
 ---
 
-## Data Sources Summary
+## Data Sources
 
 | Source | What | Access | Cost |
 |--------|------|--------|------|

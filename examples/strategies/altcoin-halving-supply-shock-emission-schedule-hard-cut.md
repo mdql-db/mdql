@@ -54,7 +54,8 @@ The filter (emission ÷ volume > 1% pre-halving) is the mechanism for isolating 
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Pre-Entry Screening (run once per identified halving)
 
@@ -87,6 +88,8 @@ EVR = pre-halving daily emission (USD) ÷ 30-day avg daily volume (USD)
 - **Instrument:** Spot preferred (no funding drag). Perp acceptable if funding < 0.05%/8h
 - **Entry execution:** TWAP over 4 hours using limit orders to minimise market impact on thin books
 - **Entry price:** Record VWAP of entry session as reference price
+
+## Exit Rules
 
 ### Exit
 
@@ -219,7 +222,7 @@ All of the following must be true before moving to paper trading:
 
 ---
 
-## Risks — Honest Assessment
+## Risks
 
 **Risk 1: Pre-halving front-running (HIGH probability)**
 The halving is public knowledge months in advance. Sophisticated participants may fully price in the supply reduction before the event. The 14-day delay helps but doesn't eliminate this. Mitigation: the EVR filter targets coins where the structural effect is large enough that even partial front-running leaves residual alpha.

@@ -13,7 +13,7 @@ created: "2026-04-04"
 pipeline_stage: "Pre-backtest (step 2 of 9)"
 ---
 
-## 1. Hypothesis
+## Hypothesis
 
 When sUSDe redemption demand spikes — driven by stress, negative funding, or market panic — holders who cannot tolerate a 7-day lockup sell sUSDe or USDe on secondary markets at a discount to par. This discount is mechanically bounded: any buyer who can tolerate the 7-day wait can redeem at par via the smart contract. The gap between secondary market price and par (1.00 USD) is therefore a time-bounded arbitrage, not a speculative bet. The strategy buys the discount, initiates the cooldown, and collects at par. The edge is the impatience premium paid by forced or panic sellers, captured by patient capital.
 
@@ -21,7 +21,7 @@ When sUSDe redemption demand spikes — driven by stress, negative funding, or m
 
 ---
 
-## 2. Structural Mechanism
+## Structural Mechanism
 
 ### 2.1 How sUSDe Redemption Works (Protocol Mechanics)
 
@@ -69,7 +69,7 @@ The only non-mechanical risk is Ethena protocol insolvency — which is a binary
 
 ---
 
-## 3. Entry Rules
+## Entry Rules
 
 ### 3.1 Primary Signal: Curve Pool Imbalance
 
@@ -136,7 +136,7 @@ Check Ethena's published funding rate (available via Ethena dashboard and on-cha
 
 ---
 
-## 4. Exit Rules
+## Exit Rules
 
 ### 4.1 Primary Exit: Cooldown Completion
 
@@ -162,7 +162,7 @@ There is **no mechanical stop-loss** for sUSDe in cooldown — the position is l
 
 ---
 
-## 5. Position Sizing
+## Position Sizing
 
 ### 5.1 Base Sizing Framework
 
@@ -191,7 +191,7 @@ Max position per trade = min(
 
 ---
 
-## 6. Backtest Methodology
+## Backtest Methodology
 
 ### 6.1 Data Requirements
 
@@ -246,7 +246,7 @@ The backtest **supports** the hypothesis if:
 
 ---
 
-## 7. Go-Live Criteria
+## Go-Live Criteria
 
 Before deploying real capital, ALL of the following must be satisfied:
 
@@ -261,7 +261,7 @@ Before deploying real capital, ALL of the following must be satisfied:
 
 ---
 
-## 8. Kill Criteria
+## Kill Criteria
 
 **Immediately halt and do not initiate new positions if:**
 
@@ -276,7 +276,7 @@ Before deploying real capital, ALL of the following must be satisfied:
 
 ---
 
-## 9. Risks
+## Risks
 
 ### 9.1 Risk Register
 
@@ -308,7 +308,7 @@ If funding rates go deeply negative for an extended period, the hedge positions 
 
 ---
 
-## 10. Data Sources & Monitoring Infrastructure
+## Data Sources
 
 ### 10.1 On-Chain Data
 
@@ -346,7 +346,7 @@ Alert message: "USDe pool imbalance: {ratio}% | Spot discount: {discount}% |
 
 ---
 
-## 11. Open Questions for Research
+## Open Questions for Research
 
 Before backtesting, the following must be answered:
 
@@ -358,7 +358,7 @@ Before backtesting, the following must be answered:
 
 ---
 
-## 12. Summary Scorecard
+## Summary Scorecard
 
 | Dimension | Assessment |
 |-----------|------------|

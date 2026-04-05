@@ -59,7 +59,8 @@ When earn rates drop, the supply faucet slows, but the existing float does not d
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Event Detection (Manual or Automated)
 
@@ -73,6 +74,8 @@ When earn rates drop, the supply faucet slows, but the existing float does not d
 - Enter short position within 4 hours of announcement confirmation
 - Venue preference: SLP/USDT spot short via margin on any CEX offering it (Binance has listed SLP spot; check current availability); if SLP perp exists, use perp
 - Entry price: Market order or limit within 0.5% of mid at time of signal
+
+## Exit Rules
 
 **Exit — take profit:**
 - Primary: 48 hours after implementation date (earn rate change goes live)

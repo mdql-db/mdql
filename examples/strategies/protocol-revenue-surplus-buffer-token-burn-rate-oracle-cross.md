@@ -71,7 +71,8 @@ LQTY stakers earn ETH and LUSD from liquidations. The protocol itself does not d
 
 ---
 
-## Entry / Exit Rules
+## Entry Rules
+
 
 ### Universe
 - **Primary:** MKR (MakerDAO governance token)
@@ -111,6 +112,8 @@ buy_pressure_ratio = daily_mkr_buy_pressure_usd / mkr_market_cap
 - MKR 24h volume > $5M (minimum liquidity gate)
 
 **Enter long MKR perpetual on Hyperliquid at next daily close after signal fires.**
+
+## Exit Rules
 
 ### Exit Rules
 - **Primary exit:** 24h after first confirmed `Flap` event (on-chain event log from Vow contract)
@@ -224,7 +227,7 @@ Abandon the strategy if any of the following occur:
 
 ---
 
-## Risks — Honest Assessment
+## Risks
 
 ### Risk 1: Governance Threshold Adjustment (HIGH probability, MEDIUM impact)
 MakerDAO governance can raise `hump` at any time via executive spell. If `hump` is raised while a signal is active, the threshold moves away and the Flap may not fire. **Mitigation:** Check the on-chain spell queue and governance forum for pending `hump` changes before entry. If a spell touching `hump` is in the hat queue, do not enter.

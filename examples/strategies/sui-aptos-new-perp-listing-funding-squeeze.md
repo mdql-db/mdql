@@ -241,7 +241,7 @@ Exit trigger | Simulated exit price | Net PnL | Notes
 
 ---
 
-## Risk Register
+## Risks
 
 | Risk | Severity | Probability | Mitigation |
 |------|----------|-------------|------------|
@@ -300,3 +300,7 @@ Exit trigger | Simulated exit price | Net PnL | Notes
 4. **Week 4–6:** Paper trade for minimum 30 days. Log every signal regardless of whether it meets entry criteria.
 5. **Week 7:** Review paper trade results against go-live criteria. Decision: go live, extend paper trading, or kill.
 6. **Ongoing:** Monitor governance forums and security channels for both protocols weekly.
+
+## Go-Live Criteria
+
+TBD

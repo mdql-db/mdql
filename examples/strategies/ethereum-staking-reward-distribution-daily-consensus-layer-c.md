@@ -1,6 +1,6 @@
 ---
 title: "Ethereum Staking Reward Distribution — Daily Consensus Layer Credit"
-status: HYPOTHESIS
+status: KILLED
 mechanism: 7
 implementation: 3
 safety: 7
@@ -11,7 +11,9 @@ categories:
   - defi-protocol
   - basis-trade
 created: "2026-04-04"
-pipeline_stage: "Pre-backtest (step 2 of 9)"
+pipeline_stage: "Killed at analysis (step 3 of 9)"
+killed: "2026-04-05"
+kill_reason: "Fee-negative at any retail scale. Daily rebase is ~0.0096% but Curve fees alone are 0.04% — edge is 4x smaller than the fee. Strategy doc admits this. Also I=3 (needs on-chain Curve + Lido oracle interaction)."
 ---
 
 ## Hypothesis
@@ -49,7 +51,8 @@ The rebase magnitude is ~$0.096 per $1,000 notional. Curve swap fees are 0.04% (
 
 ---
 
-## Entry and Exit Rules
+## Entry Rules
+
 
 ### Pre-conditions (all must be true before entry)
 
@@ -67,6 +70,8 @@ The rebase magnitude is ~$0.096 per $1,000 notional. Curve swap fees are 0.04% (
 - **Short leg:** Short equivalent ETH notional on Hyperliquid ETH-PERP to hedge directional ETH exposure.
 - **Entry timing:** Execute 10 minutes before the expected oracle submission window opens.
 - **Position size:** See sizing section below.
+
+## Exit Rules
 
 ### Exit
 
@@ -224,7 +229,7 @@ Abandon the strategy immediately if any of the following occur:
 
 ---
 
-## Risk Register
+## Risks
 
 ### Risk 1: Oracle timing drift
 **Description:** Lido oracle submission time shifts from historical pattern due to network congestion or oracle node issues.

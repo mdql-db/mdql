@@ -46,7 +46,8 @@ Hyperliquid's funding rate is calculated as a function of the mark-price premium
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Pre-computation (done offline, updated weekly)
 1. Build a correlation matrix of all Hyperliquid-listed perps using 30-day rolling hourly returns
@@ -69,6 +70,8 @@ For each correlated peer B of the ADL asset A:
   - If funding is abnormally positive → go SHORT the perp (shorts receive funding)
   - If funding is abnormally negative → go LONG the perp (longs receive funding)
 - Enter at market on Hyperliquid perp
+
+## Exit Rules
 
 ### Exit Conditions (check every 8 hours after entry)
 - **Primary exit:** Funding rate returns to within 0.75 std dev of 30-day mean
@@ -131,7 +134,7 @@ For each correlated peer B of the ADL asset A:
 
 ---
 
-## Go-Live Criteria (Paper Trading)
+## Go-Live Criteria
 
 All of the following must be true before moving to paper trade:
 

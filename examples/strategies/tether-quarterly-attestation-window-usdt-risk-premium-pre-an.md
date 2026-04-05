@@ -13,7 +13,7 @@ created: "2026-04-04"
 pipeline_stage: "Pre-backtest (step 2 of 9)"
 ---
 
-## 1. Hypothesis
+## Hypothesis
 
 Tether's quarterly reserve attestations create a predictable uncertainty cycle. In the weeks before each attestation, the market prices a small but measurable risk premium into USDT — visible as a discount to USDC on Curve and OTC markets — because no new reserve data has arrived since the prior attestation. When an attestation is published and confirms stable or improved reserves, this uncertainty premium compresses mechanically toward zero. The trade captures the spread between "uncertainty priced" and "uncertainty resolved."
 
@@ -26,7 +26,7 @@ The edge is **behavioural-structural**: the uncertainty cycle is structural (att
 
 ---
 
-## 2. Structural Mechanism
+## Structural Mechanism
 
 ### Why the discount exists
 
@@ -56,7 +56,7 @@ This is not a guaranteed mechanical convergence (no smart contract forces it), b
 
 ---
 
-## 3. Market Structure
+## Market Structure
 
 | Parameter | Detail |
 |---|---|
@@ -70,7 +70,7 @@ This is not a guaranteed mechanical convergence (no smart contract forces it), b
 
 ---
 
-## 4. Entry Rules
+## Entry Rules
 
 ### Sub-strategy A: Post-release compression trade
 
@@ -100,7 +100,7 @@ This is not a guaranteed mechanical convergence (no smart contract forces it), b
 
 ---
 
-## 5. Exit Rules
+## Exit Rules
 
 ### Sub-strategy A exits
 
@@ -123,7 +123,7 @@ This is not a guaranteed mechanical convergence (no smart contract forces it), b
 
 ---
 
-## 6. Position Sizing
+## Position Sizing
 
 ### Rationale
 
@@ -160,7 +160,7 @@ Before each Sub-B entry, ask: "If USDT goes to $0.90 (a severe but not unprecede
 
 ---
 
-## 7. Backtest Methodology
+## Backtest Methodology
 
 ### Dataset construction
 
@@ -220,7 +220,7 @@ For each attestation event:
 
 ---
 
-## 8. Attestation Calendar (Historical Reference)
+## Attestation Calendar (Historical Reference)
 
 *To be verified against primary sources during backtest construction.*
 
@@ -237,7 +237,7 @@ For each attestation event:
 
 ---
 
-## 9. Go-Live Criteria
+## Go-Live Criteria
 
 Before moving to paper trading, the backtest must show:
 
@@ -259,7 +259,7 @@ Before moving to live trading from paper trading:
 
 ---
 
-## 10. Kill Criteria
+## Kill Criteria
 
 ### Immediate kill (exit all positions, halt strategy)
 
@@ -278,7 +278,7 @@ Before moving to live trading from paper trading:
 
 ---
 
-## 11. Risks
+## Risks
 
 ### Risk 1: Tether reserve failure (CRITICAL — tail risk)
 **Description:** Attestation reveals material reserve shortfall or Tether cannot meet redemptions.
@@ -315,7 +315,7 @@ Before moving to live trading from paper trading:
 
 ---
 
-## 12. Data Sources
+## Data Sources
 
 | Data | Source | Access |
 |---|---|---|
@@ -329,7 +329,7 @@ Before moving to live trading from paper trading:
 
 ---
 
-## 13. Researcher Notes
+## Researcher Notes
 
 **What would make this a 7/10 strategy:**
 If the backtest shows that USDT discount reliably exceeds 5bp in the pre-window AND compresses within 48h post-attestation in ≥ 80% of events, the mechanism is strong enough to justify larger sizing and a more automated implementation. The score would rise because the pattern would have a clear structural cause (information vacuum → resolution) with consistent empirical confirmation.

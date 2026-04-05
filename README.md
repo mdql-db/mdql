@@ -1,8 +1,33 @@
 # MDQL
 
-A strict Markdown database with SQL-like queries.
+A database where every entry is a markdown file and every change is a readable diff.
 
-Markdown files with YAML frontmatter are the canonical rows. Frontmatter defines metadata columns, H2 sections define content columns, and a strict schema makes the files queryable while remaining readable by humans and LLMs.
+Think Obsidian, but for LLMs and pipelines. MDQL turns folders of markdown files into a schema-validated, queryable database. Frontmatter fields are metadata columns. H2 sections are content columns. The files are the database — there's nothing else. Every file reads like a normal markdown document, but you get full SQL: SELECT, INSERT, UPDATE, DELETE, JOINs, ORDER BY, aggregation.
+
+**Version controlled by default.** Your database lives in git. Every insert, update, and migration is a readable diff. Branching, merging, and rollback come free.
+
+**Use it how you want.** Run SQL in the interactive REPL. Use it as a Python ORM. Script it from the CLI. Or just `cat`, `grep`, and `awk` the files directly — they're plain markdown, always.
+
+**Flexible schema.** Fields can be required or optional, typed or freeform. Sections can be strictly enforced or left open. You choose how tight the guardrails are per table.
+
+**Relational.** Define foreign keys between tables and JOIN across them. A backtests table can reference a strategies table, and you query across both with standard SQL joins.
+
+**Built for LLMs.** AI agents can read and write the data natively. No serialization layer, no ORM translation, no API calls. The schema, the data, and the queries are all human-readable text that fits naturally into any context window.
+
+### Why MDQL
+
+- **Zero infrastructure.** No server, no Docker, no connection strings. `git clone` and you have the database. `rm -rf` and it's gone.
+- **Data review via pull requests.** Data changes go through the same PR review process as code. A reviewer reads the diff of an INSERT the way they read a code change. CI can validate schema compliance before merge.
+- **Branch-level isolation.** An agent works on a feature branch, inserts and updates entries freely, and the main database is untouched until merge. Multiple agents work in parallel without coordination.
+- **No serialization boundary.** Most databases require translating between the storage format and what humans or LLMs actually read. Here the storage format IS the readable format. An LLM sees a well-structured markdown document, not a JSON blob or SQL dump.
+- **Graceful degradation.** If you stop using MDQL tomorrow, you still have a folder of perfectly valid markdown files. No proprietary format to export from. The data outlives the tool.
+- **Section-level content columns.** Unlike key-value stores, long-form structured prose — a hypothesis, a methodology, kill criteria — is a first-class queryable column. `SELECT Hypothesis FROM strategies WHERE status = 'LIVE'`.
+- **Every unix tool still works.** `grep -r "funding" strategies/` works. `wc -l strategies/*.md` works. `diff` works. MDQL adds structure on top of plain text; it doesn't replace it.
+- **Self-documenting schemas.** The schema file is a markdown document. Its body explains the fields, conventions, and rationale. An LLM reading `_mdql.md` gets both the machine-readable schema and the human context for why fields exist.
+- **Schema migrations are diffs.** `ALTER TABLE RENAME FIELD` rewrites every file. The migration shows up as a git diff — you can review what changed in every entry, not just trust a migration script ran correctly.
+- **Audit trail for free.** `git blame strategies/funding-rate-fade.md` tells you who changed what and when. `git log --oneline strategies/` is a changelog. No separate audit logging needed.
+- **Scales down to one file.** A table with 3 entries is 3 files and a schema. No minimum viable size. Useful from day one, not just at scale.
+- **LLM context efficiency.** A single entry is a self-contained markdown file that fits in any context window. No need to reconstruct context from normalized tables — the document IS the context.
 
 ```
 my-project/
@@ -233,6 +258,41 @@ uv run mdql query examples/strategies/ \
 
 All write operations go through schema validation. For `string[]` columns, pass comma-separated values in a single string: `'funding-rates,defi'`.
 
+### ALTER TABLE — field migrations
+
+Rename, drop, or merge fields across all files in a table. Works for both frontmatter fields and sections. The schema `_mdql.md` is updated automatically.
+
+```bash
+# Rename a section across all files
+uv run mdql query examples/strategies/ \
+  "ALTER TABLE strategies RENAME FIELD 'Summary' TO 'Overview'"
+# ALTER TABLE — renamed 'Summary' to 'Overview' in 42 files
+
+# Rename a frontmatter field
+uv run mdql query examples/strategies/ \
+  "ALTER TABLE strategies RENAME FIELD 'status' TO 'state'"
+
+# Drop a field (section or frontmatter)
+uv run mdql query examples/strategies/ \
+  "ALTER TABLE strategies DROP FIELD 'Details'"
+
+# Merge multiple sections into one
+uv run mdql query examples/strategies/ \
+  "ALTER TABLE strategies MERGE FIELDS 'Entry Rules', 'Exit Rules' INTO 'Trading Rules'"
+```
+
+Field names can be single-quoted (`'Name'`), backtick-quoted (`` `Name With Spaces` ``), or bare identifiers.
+
+The same operations are available via the Python API:
+
+```python
+table = Table("examples/strategies/")
+
+table.rename_field("Summary", "Overview")     # section or frontmatter
+table.drop_field("Details")                   # section or frontmatter
+table.merge_fields(["Entry Rules", "Exit Rules"], into="Trading Rules")  # sections only
+```
+
 ### `mdql validate <folder>`
 
 Validate all markdown files against the schema.
@@ -272,7 +332,7 @@ uv run mdql query examples/strategies/ \
   "SELECT title, composite FROM strategies LIMIT 3" --format json
 ```
 
-Supported statements: `SELECT`, `INSERT INTO`, `UPDATE SET`, `DELETE FROM`
+Supported statements: `SELECT`, `INSERT INTO`, `UPDATE SET`, `DELETE FROM`, `ALTER TABLE`
 
 Supported WHERE operators: `=`, `!=`, `<`, `>`, `<=`, `>=`, `LIKE`, `IN`, `IS NULL`, `IS NOT NULL`, `AND`, `OR`
 
@@ -366,6 +426,22 @@ Schema types map to pandas dtypes automatically:
 
 Validation errors are handled via the `errors` parameter: `"warn"` (default), `"raise"`, or `"ignore"`.
 
+## ACID compliance
+
+All write operations are process-safe. MDQL provides three layers of protection:
+
+**Atomic writes.** Every file write goes through a temp-file-then-rename path. If the process crashes mid-write, the original file is untouched.
+
+**Table locking.** Write operations acquire an exclusive `fcntl.flock` per table. Two processes writing to the same table will serialize rather than corrupt each other's files.
+
+**Write-ahead journal.** Multi-file operations (`ALTER TABLE`, batch `UPDATE`/`DELETE`, `stamp`) write a journal before making changes. If the process crashes mid-operation, the next `Table()` construction detects the journal and rolls back all partial changes automatically.
+
+```python
+# This is safe even if the process is killed mid-way:
+table.rename_field("Summary", "Overview")  # touches 160 files + schema
+# On crash: next Table("strategies/") auto-recovers from journal
+```
+
 ## Design principles
 
 1. **Markdown files are the source of truth.** No opaque database files. Any index or cache is derived and disposable.
@@ -381,7 +457,7 @@ Validation errors are handled via the `errors` parameter: `"warn"` (default), `"
 uv run pytest
 ```
 
-185 tests covering parser, validator, query engine, SQL CRUD, CLI, API, timestamps, pandas integration, and integration with real data.
+251 tests covering parser, validator, query engine, SQL CRUD, field migrations, ACID transactions, CLI, API, timestamps, pandas integration, and integration with real data.
 
 ## Project structure
 
@@ -398,6 +474,8 @@ src/mdql/
   projector.py      # format output (table/json/csv)
   pandas.py         # optional pandas integration (load_dataframe, to_dataframe)
   stamp.py          # auto-manage created/modified timestamps
+  migrate.py        # field migration (rename, drop, merge) across files
+  txn.py            # ACID primitives (atomic write, table lock, journal)
   api.py            # object-oriented API (Table, Database, insert)
   cli.py            # typer CLI
 ```

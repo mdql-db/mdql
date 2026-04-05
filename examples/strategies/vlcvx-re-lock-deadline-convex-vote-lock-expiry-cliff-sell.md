@@ -48,7 +48,8 @@ The mechanism is structurally analogous to token unlocks but with one important 
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Pre-Trade Checklist (run weekly, every Thursday)
 
@@ -74,6 +75,8 @@ The mechanism is structurally analogous to token unlocks but with one important 
 - Direction: Short
 - Entry: Market order at Thursday open (00:00 UTC) at T−7
 - Slippage budget: Accept up to 0.5% slippage from mid; abort if worse
+
+## Exit Rules
 
 ### Exit Rules (first condition hit)
 
@@ -192,7 +195,7 @@ Abandon the strategy (close positions, halt signal generation) if ANY of the fol
 
 ---
 
-## Risks — Honest Assessment
+## Risks
 
 ### High Severity
 

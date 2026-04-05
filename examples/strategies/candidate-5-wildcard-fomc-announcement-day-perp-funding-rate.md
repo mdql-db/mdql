@@ -48,7 +48,8 @@ The more structural sub-element: **if** a funding spike above 0.05%/8h is observ
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Pre-conditions (all must be true to enter)
 1. Date is an FOMC announcement day (Fed calendar)
@@ -61,6 +62,8 @@ The more structural sub-element: **if** a funding spike above 0.05%/8h is observ
 - **Position:** Long spot BTC + Short BTC-USDC perp on Hyperliquid in equal notional size
 - **Notional size:** Per position sizing rules below
 - **Record:** Funding rate at entry, OI at entry, BTC spot price at entry
+
+## Exit Rules
 
 ### Exit — first condition met triggers exit
 1. **Time exit:** 4:30pm ET (2h15m window — captures 2 full hourly funding settlements)

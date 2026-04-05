@@ -48,7 +48,8 @@ This is a **mechanical arbitrage deadline**, not a behavioral tendency.
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Signal Calculation (3:25pm ET)
 
@@ -68,6 +69,8 @@ This is a **mechanical arbitrage deadline**, not a behavioral tendency.
 - **Instrument:** BTC-USD perpetual on Hyperliquid
 - **Time:** Market order at 3:30pm ET (5 minutes after signal confirmation)
 - **Direction:** Long
+
+## Exit Rules
 
 ### Exit Execution
 
@@ -166,7 +169,7 @@ Abandon the strategy (stop paper trading or live trading) if:
 
 ---
 
-## Risks — Honest Assessment
+## Risks
 
 ### Risk 1: APs hedge continuously, not at 3:30pm (HIGH probability, HIGH impact)
 The most likely failure mode. Sophisticated APs (Jane Street, Virtu) run delta-neutral books and may hedge BTC exposure throughout the day as ETF premium develops, not in a concentrated burst before 4pm. If hedging is spread across the day, the 3:30pm entry captures nothing special. **Mitigation:** The time-of-day control test in the backtest will detect this.

@@ -46,7 +46,8 @@ When a single stablecoin's share of Curve's 3pool (USDT/USDC/DAI) crosses 45% of
 
 ---
 
-## Entry / Exit Rules
+## Entry Rules
+
 
 ### Signal Definition
 
@@ -68,6 +69,8 @@ Identify:
 - **Direction:** Long Y (underweight) / Short X (overweight) as a pair trade.
 - **Entry price:** Mid-market at the time of threshold cross, not limit orders (to avoid missing the window).
 - **Entry confirmation:** Require threshold to persist for 2 consecutive 60-second readings to filter single-block anomalies.
+
+## Exit Rules
 
 ### Exit
 
@@ -184,7 +187,7 @@ Abandon the strategy (in backtest, paper trade, or live) if any of the following
 
 ---
 
-## Risks — Honest Assessment
+## Risks
 
 ### Primary Risk: The Lag May Not Exist
 

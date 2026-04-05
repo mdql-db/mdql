@@ -42,7 +42,8 @@ This is not "tends to happen." The mechanism has three structural layers:
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Signal Construction
 
@@ -70,6 +71,8 @@ notional_at_risk = Σ [ bond_tokens_i × spot_current ] for all bond_i where:
 - **Entry timing:** T-20h before the vesting cliff (allows position to be established before any front-running, captures the full pre-cliff drift)
 - **Entry price:** Market order or limit within 0.3% of mid — do not chase
 - **Leverage:** 2x maximum (this is a probabilistic, not guaranteed, outcome)
+
+## Exit Rules
 
 ### Exit Rules (first trigger wins)
 
@@ -195,7 +198,7 @@ Abandon the strategy (stop paper trading, do not go live) if any of the followin
 
 ---
 
-## Risks — Honest Assessment
+## Risks
 
 ### High Severity
 
@@ -221,7 +224,7 @@ Abandon the strategy (stop paper trading, do not go live) if any of the followin
 
 ---
 
-## Data Sources — Complete Reference
+## Data Sources
 
 ```
 # On-chain bond data

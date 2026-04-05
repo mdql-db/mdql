@@ -43,7 +43,8 @@ This is not "tends to happen" — it is mechanically motivated:
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Trigger Conditions (all must be met)
 1. Protocol announces a retroactive airdrop where the snapshot date is **explicitly stated as past** (not a future snapshot)
@@ -56,6 +57,8 @@ This is not "tends to happen" — it is mechanically motivated:
 - **If announcement causes immediate dump (no pump):** Enter within 30 minutes; do not chase if price has already moved >10% down
 - **Entry sizing:** 50% of intended position at announcement; hold remaining 50% for secondary confirmation
 - **Secondary confirmation entry (remaining 50%):** TVL on DeFiLlama shows ≥5% decline within **24 hours** of announcement. If TVL does not decline within 24 hours, do not add the second tranche and reduce first tranche to 25%
+
+## Exit Rules
 
 ### Exit
 - **Primary exit signal:** TVL decline rate on DeFiLlama flattens — defined as <2% TVL change over any rolling 48-hour window, after an initial decline of ≥10%
@@ -168,7 +171,7 @@ Abandon the strategy if any of the following occur:
 
 ---
 
-## Risks — Honest Assessment
+## Risks
 
 ### Primary Risk: The Pump Overwhelms the Short
 **Severity: High.** Airdrop announcements are retail-positive news. A token can pump 30–50% on announcement before the TVL drain begins. If the stop is hit during the pump, the trade loses before the thesis plays out. **Mitigation:** Enter smaller initial position; wait for pump to exhaust before adding. Consider entering only after price has retraced 50% of the initial pump.

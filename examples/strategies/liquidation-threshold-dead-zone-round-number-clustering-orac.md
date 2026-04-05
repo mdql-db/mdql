@@ -56,7 +56,8 @@ Aave v3 liquidation mechanics: when `healthFactor < 1`, any address can call `li
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Pre-trade setup (run once daily, update continuously)
 
@@ -77,6 +78,8 @@ Aave v3 liquidation mechanics: when `healthFactor < 1`, any address can call `li
 | **C5: Perp funding neutral** | Funding rate on Hyperliquid is not >+0.05% per 8h (avoid paying excessive funding while waiting) |
 
 **Entry:** Market short on Hyperliquid ETH-PERP or BTC-PERP at mid-price immediately upon all conditions met.
+
+## Exit Rules
 
 ### Exit rules (first condition hit)
 

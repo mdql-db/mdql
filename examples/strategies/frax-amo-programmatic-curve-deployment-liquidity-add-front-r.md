@@ -13,13 +13,13 @@ created: "2026-04-04"
 pipeline_stage: "Pre-backtest (step 2 of 9)"
 ---
 
-## 1. One-Line Summary
+## One-Line Summary
 
 When Frax AMO contracts approach their programmatic deployment thresholds — readable from on-chain state — position in the destination Curve pool's paired asset or LP tokens before the liquidity addition reprices pool composition, then exit once the AMO flow completes and pool depth stabilises.
 
 ---
 
-## 2. Hypothesis
+## Hypothesis
 
 Frax's AMO contracts are rule-based autonomous systems that mint and deploy FRAX into Curve pools when FRAX trades above peg, and withdraw when below. These are not discretionary decisions — they are deterministic smart contract executions triggered by observable on-chain parameters. The trigger conditions (collateral ratio, peg deviation threshold, AMO utilisation caps) are readable from contract state before execution occurs. A non-HFT participant with automated monitoring can observe the approach to trigger thresholds and position ahead of the flow. The AMO flow itself is the edge — not a prediction about price, but a known mechanical event that will alter pool composition in a predictable direction.
 
@@ -27,7 +27,7 @@ Frax's AMO contracts are rule-based autonomous systems that mint and deploy FRAX
 
 ---
 
-## 3. Structural Mechanism — Detailed
+## Structural Mechanism — Detailed
 
 ### 3.1 What the AMO Does
 
@@ -59,7 +59,7 @@ The gap between "threshold approaching" and "transaction confirmed" is not milli
 
 ---
 
-## 4. Variants
+## Variants
 
 | Variant | Action | Trigger | Exit |
 |---|---|---|---|
@@ -72,7 +72,7 @@ The gap between "threshold approaching" and "transaction confirmed" is not milli
 
 ---
 
-## 5. Entry Rules
+## Entry Rules
 
 ### 5.1 Trigger Conditions (must ALL be true)
 
@@ -97,7 +97,7 @@ The gap between "threshold approaching" and "transaction confirmed" is not milli
 
 ---
 
-## 6. Exit Rules
+## Exit Rules
 
 ### 6.1 Normal Exit
 
@@ -121,7 +121,7 @@ If AMO transaction does not execute within **4 hours** of entry trigger, exit po
 
 ---
 
-## 7. Position Sizing
+## Position Sizing
 
 ### 7.1 Constraints
 
@@ -152,7 +152,7 @@ These are small. The strategy is viable only if:
 
 ---
 
-## 8. Backtest Methodology
+## Backtest Methodology
 
 ### 8.1 Data Requirements
 
@@ -216,7 +216,7 @@ Apply realistic costs:
 
 ---
 
-## 9. Go-Live Criteria
+## Go-Live Criteria
 
 All of the following must be satisfied before live deployment:
 
@@ -231,7 +231,7 @@ All of the following must be satisfied before live deployment:
 
 ---
 
-## 10. Kill Criteria
+## Kill Criteria
 
 Immediately pause and review if any of the following occur:
 
@@ -247,7 +247,7 @@ Immediately pause and review if any of the following occur:
 
 ---
 
-## 11. Risks
+## Risks
 
 ### 11.1 Critical Risks
 
@@ -285,7 +285,7 @@ Frax v3 has shifted toward a more fully-collateralised model. AMO activity may b
 
 ---
 
-## 12. Data Sources
+## Data Sources
 
 | Source | URL / Access Method | Data |
 |---|---|---|
@@ -300,7 +300,7 @@ Frax v3 has shifted toward a more fully-collateralised model. AMO activity may b
 
 ---
 
-## 13. Open Questions Before Backtest
+## Open Questions Before Backtest
 
 These must be answered during data collection phase:
 
@@ -313,7 +313,7 @@ These must be answered during data collection phase:
 
 ---
 
-## 14. Researcher Notes
+## Researcher Notes
 
 This strategy sits at the intersection of DeFi protocol mechanics and LP position management. The structural mechanism is genuine — AMO flows are deterministic and observable. The honest uncertainty is whether the signal window is wide enough for non-MEV participants and whether the P&L per trade justifies the operational complexity.
 

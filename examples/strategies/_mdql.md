@@ -45,7 +45,25 @@ frontmatter:
 h1:
   required: false
 
-sections: {}
+sections:
+  Hypothesis:
+    required: true
+  Risks:
+    required: true
+  Entry Rules:
+    required: true
+  Exit Rules:
+    required: true
+  Position Sizing:
+    required: true
+  Data Sources:
+    required: true
+  Backtest Methodology:
+    required: true
+  Kill Criteria:
+    required: true
+  Go-Live Criteria:
+    required: true
 
 rules:
   reject_unknown_frontmatter: true

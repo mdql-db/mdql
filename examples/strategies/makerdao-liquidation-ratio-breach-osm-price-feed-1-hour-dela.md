@@ -45,7 +45,8 @@ The liquidation cascade direction is probabilistic in magnitude but **certain in
 
 ---
 
-## Entry / Exit Rules
+## Entry Rules
+
 
 ### Pre-conditions (must ALL be true before monitoring)
 - ETH-USD OSM `cur` price is available and timestamp is known (fetch from contract)
@@ -62,6 +63,8 @@ The liquidation cascade direction is probabilistic in magnitude but **certain in
 | Direction | Short |
 
 **Entry price:** Market order at signal confirmation. Do not use limit orders — the window is time-sensitive.
+
+## Exit Rules
 
 ### Exit Rules
 | Condition | Action |
@@ -175,7 +178,7 @@ Abandon the strategy (paper or live) if any of the following occur:
 
 ---
 
-## Risks — Honest Assessment
+## Risks
 
 ### High Severity
 

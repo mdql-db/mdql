@@ -13,7 +13,7 @@ created: "2026-04-04"
 pipeline_stage: "Pre-backtest (step 2 of 9)"
 ---
 
-## 1. Hypothesis
+## Hypothesis
 
 ### Core Claim
 When Bitcoin makes a sharp directional move exceeding 3–5% within a single 4-hour candle, altcoins systematically underreact at the time of the move and then "catch up" over the subsequent 2–12 hours. This creates a predictable, tradeable echo window.
@@ -39,7 +39,7 @@ The lag arises from **liquidity microstructure asymmetry**:
 
 ---
 
-## 2. Proposed Backtest Methodology
+## Backtest Methodology
 
 ### 2.1 Time Period
 - **Primary**: January 2020 – December 2024 (5 years, full cycle including bull 2020–21, bear 2022, recovery 2023–24)
@@ -72,7 +72,7 @@ All timestamps in UTC. Data should be stored locally before backtesting to avoid
 
 ---
 
-## 3. Signal Definition
+## Signal Definition
 
 ### 3.1 BTC Trigger Candle
 A **BTC Trigger Event** is defined as:
@@ -103,7 +103,7 @@ Meaning: the alt has moved less than half of what BTC moved in the same candle. 
 
 ---
 
-## 4. Entry Rules
+## Entry Rules
 
 ### 4.1 Entry Timing
 - Signal is confirmed at **close of BTC trigger candle** (time `t`).
@@ -121,7 +121,7 @@ Meaning: the alt has moved less than half of what BTC moved in the same candle. 
 
 ---
 
-## 5. Exit Rules
+## Exit Rules
 
 ### 5.1 Primary Exit: Catch-Up Target
 Exit when the altcoin's cumulative return since entry reaches **80% of BTC's trigger candle return**.
@@ -157,7 +157,7 @@ Rationale: The catch-up trade is predicated on BTC holding its new level. A reve
 
 ---
 
-## 6. Position Sizing
+## Position Sizing
 
 ### 6.1 Base Model
 Risk a fixed **1% of portfolio equity per trade** (risk-based sizing).
@@ -195,7 +195,7 @@ If drawdown exceeds **20%**, halt new entries (see Kill Criteria).
 
 ---
 
-## 7. Go-Live Criteria
+## Go-Live Criteria
 
 All of the following must be satisfied before live deployment:
 
@@ -215,7 +215,7 @@ If the 2023–2024 sub-period shows Sharpe < 0.5 but earlier periods are strong,
 
 ---
 
-## 8. Kill Criteria (Live Trading)
+## Kill Criteria
 
 Halt live trading and return to research if any of the following occur:
 
@@ -233,7 +233,7 @@ Kill criteria are **non-negotiable**. No overrides without a documented post-mor
 
 ---
 
-## 9. Risks
+## Risks
 
 ### 9.1 Edge Decay Risk (HIGH — Primary Concern)
 The lag may have been largely arb'd away by 2022–2024 as:
@@ -277,7 +277,7 @@ Three threshold parameters (3/4/5%), two exit windows (8/12/16h), and a stop lev
 
 ---
 
-## 10. Data Sources
+## Data Sources
 
 | Data | Source | Endpoint / Notes |
 |---|---|---|

@@ -39,7 +39,7 @@ The entry signal is the **basis spread itself** â€” not the funding rate level â
 
 ---
 
-## Proposed Backtest Methodology
+## Backtest Methodology
 
 ### Data required
 
@@ -138,7 +138,8 @@ This tests whether the edge is regime-dependent and informs future conditional f
 
 ---
 
-## Entry/Exit Rules (Live Specification)
+## Entry Rules
+
 
 ### Data inputs
 
@@ -161,6 +162,8 @@ elif basis_current < -0.40 and basis_prev < -0.30:
     enter_long_perp(token, notional=POSITION_SIZE)
     record_entry(basis=basis_current, timestamp=now)
 ```
+
+## Exit Rules
 
 ### Exit logic (checked every 15 minutes)
 

@@ -59,7 +59,8 @@ All veCRV unlocks occur on Thursdays (weekly epoch). This means sell pressure, i
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Universe
 
@@ -85,6 +86,8 @@ All veCRV unlocks occur on Thursdays (weekly epoch). This means sell pressure, i
 - **Entry window:** Open short between **Tuesday 00:00 UTC** (48h before Thursday unlock) and **Wednesday 23:59 UTC** (day before unlock)
 - **Entry price:** Market order at open of the 1H candle following trigger confirmation, or limit order at mid of current 1H candle ±0.3%
 - **Entry condition:** Enter only if CRV perp funding rate is not strongly negative (funding < −0.05% per 8h would indicate crowded short — skip if so)
+
+## Exit Rules
 
 ### Exit
 

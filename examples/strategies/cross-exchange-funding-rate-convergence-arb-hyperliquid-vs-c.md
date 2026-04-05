@@ -43,7 +43,8 @@ The mechanism is well-understood. The Zunid edge is **breadth** (monitoring all 
 
 ---
 
-## Entry / Exit Rules
+## Entry Rules
+
 
 ### Universe
 All Hyperliquid perpetual markets with a matching perpetual on Binance **or** OKX. As of 2025, this covers approximately 60–80 pairs. Exclude any pair where Binance/OKX 24h perp volume < $5M (slippage risk too high).
@@ -66,6 +67,8 @@ Both rates are expressed as **% per 8-hour period**. Use the rate that was **set
 - **Leg B:** Long CEX perp (Binance preferred; OKX as fallback) — size $X notional
 - Both legs opened within the same 8-hour funding window, before the next funding settlement
 - Target entry within **30 minutes of the window open** to capture the next funding payment
+
+## Exit Rules
 
 ### Exit Conditions (first trigger wins)
 1. **Primary:** `spread_t < 0.01%` for 1 consecutive period (spread has compressed)
@@ -170,7 +173,7 @@ Abandon the strategy (paper or live) if any of the following occur:
 
 ---
 
-## Risks — Honest Assessment
+## Risks
 
 ### Execution Risk (HIGH)
 The strategy requires simultaneous execution on two venues. If Leg A fills and Leg B doesn't (due to API failure, insufficient margin, or liquidity gap), the position is directionally exposed. This is the primary operational risk. Mitigation: always place Leg B first (CEX, more liquid), then Leg A.

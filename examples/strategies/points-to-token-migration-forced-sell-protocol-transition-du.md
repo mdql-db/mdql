@@ -311,3 +311,7 @@ The strategy moves from hypothesis to paper trading when ALL of the following ar
 ---
 
 *This document is a research hypothesis. No backtest has been completed. No live trading has occurred. All claims about mechanism and edge are theoretical and require empirical validation before capital deployment.*
+
+## Data Sources
+
+TBD

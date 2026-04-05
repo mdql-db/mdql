@@ -64,7 +64,8 @@ The mechanism is strongest when:
 
 ---
 
-## Entry / Exit Rules
+## Entry Rules
+
 
 ### Pre-trade checklist (run 10 days before each quarter-end)
 
@@ -82,6 +83,8 @@ The mechanism is strongest when:
 - [ ] BTC spot price has not fallen >10% in the prior 14 days (falling market removes selling incentive)
 
 **Entry:** Short BTC-USDC perpetual on Hyperliquid at market open, **7 calendar days before fiscal quarter-end** (typically March 24, June 24, Sept 24, Dec 24 — adjust for weekends)
+
+## Exit Rules
 
 ### Exit rules
 

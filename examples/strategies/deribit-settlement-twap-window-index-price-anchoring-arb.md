@@ -211,7 +211,7 @@ Stop trading this strategy immediately if any of the following occur:
 
 ---
 
-## Risks and Mitigants
+## Risks
 
 ### Risk 1: Competing flows dominate
 **Description:** Macro news, liquidation cascades, or large spot flows during the window overwhelm the options-driven pressure.

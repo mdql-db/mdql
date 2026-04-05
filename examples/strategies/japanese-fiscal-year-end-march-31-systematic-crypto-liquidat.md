@@ -55,7 +55,8 @@ Japanese retail crypto holders face a hard March 31 fiscal year-end deadline. Cr
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Short Leg (Pre-March 31)
 
@@ -86,6 +87,9 @@ Japanese retail crypto holders face a hard March 31 fiscal year-end deadline. Cr
 
 ---
 
+## Exit Rules
+
+Defined within Entry Rules section.
 ## Position Sizing
 
 - **Base allocation:** 2% of total portfolio per leg (short leg = 2%, long leg = 2%)

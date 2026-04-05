@@ -1,0 +1,461 @@
+//! Validate parsed markdown files against a schema.
+
+use std::collections::HashMap;
+
+use crate::errors::ValidationError;
+use crate::parser::ParsedFile;
+use crate::schema::Schema;
+use crate::stamp::TIMESTAMP_FIELDS;
+
+pub fn validate_file(parsed: &ParsedFile, schema: &Schema) -> Vec<ValidationError> {
+    let mut errors = Vec::new();
+    let fp = &parsed.path;
+
+    // Parse-level errors
+    for msg in &parsed.parse_errors {
+        errors.push(ValidationError {
+            file_path: fp.clone(),
+            error_type: "parse_error".to_string(),
+            field: None,
+            message: msg.clone(),
+            line_number: None,
+        });
+    }
+
+    if errors.iter().any(|e| e.error_type == "parse_error") {
+        return errors;
+    }
+
+    let fm = &parsed.raw_frontmatter;
+    let fm_map = match fm.as_mapping() {
+        Some(m) => m,
+        None => return errors,
+    };
+
+    // --- Frontmatter field checks ---
+    for (name, field_def) in &schema.frontmatter {
+        let key = serde_yaml::Value::String(name.clone());
+        match fm_map.get(&key) {
+            None => {
+                if field_def.required {
+                    errors.push(ValidationError {
+                        file_path: fp.clone(),
+                        error_type: "missing_field".to_string(),
+                        field: Some(name.clone()),
+                        message: format!("Missing required frontmatter field '{}'", name),
+                        line_number: None,
+                    });
+                }
+            }
+            Some(value) => {
+                if let Some(type_err) = check_type(value, &field_def.field_type, name) {
+                    errors.push(ValidationError {
+                        file_path: fp.clone(),
+                        error_type: "type_mismatch".to_string(),
+                        field: Some(name.clone()),
+                        message: type_err,
+                        line_number: None,
+                    });
+                }
+
+                if let Some(ref enum_vals) = field_def.enum_values {
+                    if !value.is_null() {
+                        let str_val = yaml_value_to_string(value);
+                        if !enum_vals.contains(&str_val) {
+                            errors.push(ValidationError {
+                                file_path: fp.clone(),
+                                error_type: "enum_violation".to_string(),
+                                field: Some(name.clone()),
+                                message: format!(
+                                    "Field '{}' value '{}' not in allowed values: {:?}",
+                                    name, str_val, enum_vals
+                                ),
+                                line_number: None,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Validate timestamp fields if present
+    for ts_field in TIMESTAMP_FIELDS {
+        let key = serde_yaml::Value::String(ts_field.to_string());
+        if let Some(value) = fm_map.get(&key) {
+            if let Some(type_err) = check_type(
+                value,
+                &crate::schema::FieldType::Date,
+                ts_field,
+            ) {
+                errors.push(ValidationError {
+                    file_path: fp.clone(),
+                    error_type: "type_mismatch".to_string(),
+                    field: Some(ts_field.to_string()),
+                    message: type_err,
+                    line_number: None,
+                });
+            }
+        }
+    }
+
+    // Unknown frontmatter
+    if schema.rules.reject_unknown_frontmatter {
+        for (key_val, _) in fm_map {
+            if let Some(key) = key_val.as_str() {
+                if !schema.frontmatter.contains_key(key)
+                    && !TIMESTAMP_FIELDS.contains(&key)
+                {
+                    errors.push(ValidationError {
+                        file_path: fp.clone(),
+                        error_type: "unknown_field".to_string(),
+                        field: Some(key.to_string()),
+                        message: format!(
+                            "Unknown frontmatter field '{}' (not in schema)",
+                            key
+                        ),
+                        line_number: None,
+                    });
+                }
+            }
+        }
+    }
+
+    // --- H1 checks ---
+    if schema.h1_required && parsed.h1.is_none() {
+        errors.push(ValidationError {
+            file_path: fp.clone(),
+            error_type: "missing_h1".to_string(),
+            field: None,
+            message: "Missing required H1 heading".to_string(),
+            line_number: None,
+        });
+    }
+
+    if let Some(ref h1_field) = schema.h1_must_equal_frontmatter {
+        if let Some(ref h1) = parsed.h1 {
+            let key = serde_yaml::Value::String(h1_field.clone());
+            if let Some(expected_val) = fm_map.get(&key) {
+                let expected = yaml_value_to_string(expected_val);
+                if h1 != &expected {
+                    errors.push(ValidationError {
+                        file_path: fp.clone(),
+                        error_type: "h1_mismatch".to_string(),
+                        field: None,
+                        message: format!(
+                            "H1 '{}' does not match frontmatter '{}' (expected '{}')",
+                            h1, h1_field, expected
+                        ),
+                        line_number: parsed.h1_line_number,
+                    });
+                }
+            }
+        }
+    }
+
+    // --- Section checks ---
+    let section_names: Vec<&str> = parsed
+        .sections
+        .iter()
+        .map(|s| s.normalized_heading.as_str())
+        .collect();
+
+    // Count occurrences
+    let mut section_counter: HashMap<&str, usize> = HashMap::new();
+    for name in &section_names {
+        *section_counter.entry(name).or_insert(0) += 1;
+    }
+
+    // Duplicate sections
+    if schema.rules.reject_duplicate_sections {
+        for (name, count) in &section_counter {
+            if *count > 1 {
+                errors.push(ValidationError {
+                    file_path: fp.clone(),
+                    error_type: "duplicate_section".to_string(),
+                    field: Some(name.to_string()),
+                    message: format!(
+                        "Duplicate section '{}' (appears {} times)",
+                        name, count
+                    ),
+                    line_number: None,
+                });
+            }
+        }
+    }
+
+    // Required sections
+    for (name, section_def) in &schema.sections {
+        if section_def.required && !section_names.contains(&name.as_str()) {
+            errors.push(ValidationError {
+                file_path: fp.clone(),
+                error_type: "missing_section".to_string(),
+                field: Some(name.clone()),
+                message: format!("Missing required section '{}'", name),
+                line_number: None,
+            });
+        }
+    }
+
+    // Unknown sections
+    if schema.rules.reject_unknown_sections {
+        for section in &parsed.sections {
+            if !schema.sections.contains_key(&section.normalized_heading) {
+                errors.push(ValidationError {
+                    file_path: fp.clone(),
+                    error_type: "unknown_section".to_string(),
+                    field: Some(section.normalized_heading.clone()),
+                    message: format!(
+                        "Unknown section '{}' (not in schema)",
+                        section.normalized_heading
+                    ),
+                    line_number: Some(section.line_number),
+                });
+            }
+        }
+    }
+
+    errors
+}
+
+fn check_type(
+    value: &serde_yaml::Value,
+    expected: &crate::schema::FieldType,
+    field_name: &str,
+) -> Option<String> {
+    use crate::schema::FieldType;
+
+    if value.is_null() {
+        return None;
+    }
+
+    match expected {
+        FieldType::String => {
+            if !value.is_string() {
+                return Some(format!(
+                    "Field '{}' expected string, got {}",
+                    field_name,
+                    yaml_type_name(value)
+                ));
+            }
+        }
+        FieldType::Int => {
+            if value.is_bool() {
+                return Some(format!(
+                    "Field '{}' expected int, got bool",
+                    field_name
+                ));
+            }
+            // serde_yaml may parse integers as i64 or u64
+            if !value.is_i64() && !value.is_u64() {
+                return Some(format!(
+                    "Field '{}' expected int, got {}",
+                    field_name,
+                    yaml_type_name(value)
+                ));
+            }
+        }
+        FieldType::Float => {
+            if value.is_bool() {
+                return Some(format!(
+                    "Field '{}' expected float, got bool",
+                    field_name
+                ));
+            }
+            if !value.is_f64() && !value.is_i64() && !value.is_u64() {
+                return Some(format!(
+                    "Field '{}' expected float, got {}",
+                    field_name,
+                    yaml_type_name(value)
+                ));
+            }
+        }
+        FieldType::Bool => {
+            if !value.is_bool() {
+                return Some(format!(
+                    "Field '{}' expected bool, got {}",
+                    field_name,
+                    yaml_type_name(value)
+                ));
+            }
+        }
+        FieldType::Date => {
+            // YAML may parse dates as strings or as chrono dates
+            if let Some(s) = value.as_str() {
+                if chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").is_err() {
+                    return Some(format!(
+                        "Field '{}' expected date, got string '{}' (not ISO format)",
+                        field_name, s
+                    ));
+                }
+                return None;
+            }
+            // serde_yaml may parse bare dates (2026-04-04) as strings already
+            // But if it comes as another type, that's an error
+            if !value.is_string() {
+                return Some(format!(
+                    "Field '{}' expected date, got {}",
+                    field_name,
+                    yaml_type_name(value)
+                ));
+            }
+        }
+        FieldType::StringArray => {
+            match value.as_sequence() {
+                None => {
+                    return Some(format!(
+                        "Field '{}' expected string[], got {}",
+                        field_name,
+                        yaml_type_name(value)
+                    ));
+                }
+                Some(seq) => {
+                    for (i, item) in seq.iter().enumerate() {
+                        if !item.is_string() {
+                            return Some(format!(
+                                "Field '{}[{}]' expected string, got {}",
+                                field_name,
+                                i,
+                                yaml_type_name(item)
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
+fn yaml_type_name(value: &serde_yaml::Value) -> &'static str {
+    match value {
+        serde_yaml::Value::Null => "null",
+        serde_yaml::Value::Bool(_) => "bool",
+        serde_yaml::Value::Number(_) => {
+            if value.is_f64() && !value.is_i64() && !value.is_u64() {
+                "float"
+            } else {
+                "int"
+            }
+        }
+        serde_yaml::Value::String(_) => "str",
+        serde_yaml::Value::Sequence(_) => "list",
+        serde_yaml::Value::Mapping(_) => "mapping",
+        _ => "unknown",
+    }
+}
+
+fn yaml_value_to_string(value: &serde_yaml::Value) -> String {
+    match value {
+        serde_yaml::Value::String(s) => s.clone(),
+        serde_yaml::Value::Number(n) => n.to_string(),
+        serde_yaml::Value::Bool(b) => b.to_string(),
+        serde_yaml::Value::Null => "null".to_string(),
+        _ => format!("{:?}", value),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parser::parse_text;
+    use crate::schema::*;
+    use indexmap::IndexMap;
+
+    fn make_schema() -> Schema {
+        let mut frontmatter = IndexMap::new();
+        frontmatter.insert("title".to_string(), FieldDef {
+            field_type: FieldType::String,
+            required: true,
+            enum_values: None,
+        });
+        frontmatter.insert("count".to_string(), FieldDef {
+            field_type: FieldType::Int,
+            required: true,
+            enum_values: None,
+        });
+        frontmatter.insert("status".to_string(), FieldDef {
+            field_type: FieldType::String,
+            required: false,
+            enum_values: Some(vec!["ACTIVE".into(), "ARCHIVED".into()]),
+        });
+
+        let mut sections = IndexMap::new();
+        sections.insert("Summary".to_string(), SectionDef {
+            content_type: "markdown".to_string(),
+            required: true,
+        });
+
+        Schema {
+            table: "test".to_string(),
+            primary_key: "path".to_string(),
+            frontmatter,
+            h1_required: false,
+            h1_must_equal_frontmatter: None,
+            sections,
+            rules: Rules {
+                reject_unknown_frontmatter: true,
+                reject_unknown_sections: false,
+                reject_duplicate_sections: true,
+                normalize_numbered_headings: false,
+            },
+        }
+    }
+
+    #[test]
+    fn test_valid_file() {
+        let text = "---\ntitle: \"Hello\"\ncount: 5\n---\n\n## Summary\n\nA summary.\n";
+        let parsed = parse_text(text, "test.md", false);
+        let errors = validate_file(&parsed, &make_schema());
+        assert!(errors.is_empty(), "Expected no errors, got: {:?}", errors);
+    }
+
+    #[test]
+    fn test_missing_required_field() {
+        let text = "---\ntitle: \"Hello\"\n---\n\n## Summary\n\nText.\n";
+        let parsed = parse_text(text, "test.md", false);
+        let errors = validate_file(&parsed, &make_schema());
+        assert!(errors.iter().any(|e| e.error_type == "missing_field" && e.field.as_deref() == Some("count")));
+    }
+
+    #[test]
+    fn test_type_mismatch() {
+        let text = "---\ntitle: \"Hello\"\ncount: \"not a number\"\n---\n\n## Summary\n\nText.\n";
+        let parsed = parse_text(text, "test.md", false);
+        let errors = validate_file(&parsed, &make_schema());
+        assert!(errors.iter().any(|e| e.error_type == "type_mismatch" && e.field.as_deref() == Some("count")));
+    }
+
+    #[test]
+    fn test_enum_violation() {
+        let text = "---\ntitle: \"Hello\"\ncount: 5\nstatus: INVALID\n---\n\n## Summary\n\nText.\n";
+        let parsed = parse_text(text, "test.md", false);
+        let errors = validate_file(&parsed, &make_schema());
+        assert!(errors.iter().any(|e| e.error_type == "enum_violation"));
+    }
+
+    #[test]
+    fn test_unknown_frontmatter() {
+        let text = "---\ntitle: \"Hello\"\ncount: 5\nextra: bad\n---\n\n## Summary\n\nText.\n";
+        let parsed = parse_text(text, "test.md", false);
+        let errors = validate_file(&parsed, &make_schema());
+        assert!(errors.iter().any(|e| e.error_type == "unknown_field" && e.field.as_deref() == Some("extra")));
+    }
+
+    #[test]
+    fn test_missing_required_section() {
+        let text = "---\ntitle: \"Hello\"\ncount: 5\n---\n\n## Other\n\nText.\n";
+        let parsed = parse_text(text, "test.md", false);
+        let errors = validate_file(&parsed, &make_schema());
+        assert!(errors.iter().any(|e| e.error_type == "missing_section"));
+    }
+
+    #[test]
+    fn test_duplicate_section() {
+        let text = "---\ntitle: \"Hello\"\ncount: 5\n---\n\n## Summary\n\nFirst.\n\n## Summary\n\nSecond.\n";
+        let parsed = parse_text(text, "test.md", false);
+        let errors = validate_file(&parsed, &make_schema());
+        assert!(errors.iter().any(|e| e.error_type == "duplicate_section"));
+    }
+}

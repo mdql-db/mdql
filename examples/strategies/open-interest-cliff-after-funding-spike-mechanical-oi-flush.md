@@ -62,7 +62,8 @@ This is why the score is 5/10, not 8/10. The flush is guaranteed *eventually* bu
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Universe
 All perpetual futures on Hyperliquid with >$10M average daily OI over the prior 30 days. Exclude stablecoins and synthetic assets. Minimum 30 days of OI + funding history required.
@@ -78,6 +79,8 @@ All perpetual futures on Hyperliquid with >$10M average daily OI over the prior 
 | Spot-perp premium | Perp trading >0.3% above spot (for long funding) | Confirms premium exists to revert; skip if premium is absent |
 
 **Entry timing:** Enter at the open of the *next* 8h funding period after all conditions are met. Do not chase mid-period — wait for the period boundary to get a clean funding cost read.
+
+## Exit Rules
 
 ### Exit Conditions (first trigger wins)
 

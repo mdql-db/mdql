@@ -46,7 +46,8 @@ The mechanism is grounded in market microstructure:
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Entry Conditions (all must be true)
 
@@ -59,6 +60,8 @@ The mechanism is grounded in market microstructure:
 
 - Enter long perp at market on the open of the 4th funding period (i.e., immediately after the 3rd consecutive negative period confirms).
 - Record entry funding rate, entry price, and entry timestamp.
+
+## Exit Rules
 
 ### Exit Conditions (first trigger wins)
 

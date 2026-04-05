@@ -50,7 +50,8 @@ Polymarket resolution is a discrete, timestamped, on-chain event. It is not a so
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Universe Selection
 
@@ -69,6 +70,8 @@ Only trade markets meeting ALL of the following criteria:
 - **Entry window:** Enter within **T+0 to T+10 minutes** of resolution timestamp
 - **Entry price:** Market order on Hyperliquid perp or limit order at mid ± 0.2% (use limit to avoid slippage on thin books)
 - **Do not enter if:** Token has already moved >3% from its price at T-30min before resolution (signal already propagated)
+
+## Exit Rules
 
 ### Exit
 

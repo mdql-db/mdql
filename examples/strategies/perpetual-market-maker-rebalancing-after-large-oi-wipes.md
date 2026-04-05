@@ -58,7 +58,7 @@ At 0.05% per 8h, 6 consecutive capped payments = 0.30% carry over 48 hours. Roun
 
 ---
 
-## Proposed Backtest Methodology
+## Backtest Methodology
 
 ### Data Required
 

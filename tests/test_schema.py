@@ -25,6 +25,22 @@ class TestLoadSchema:
         assert s.reject_unknown_sections is False
         assert s.normalize_numbered_headings is True
 
+    def test_metadata_keys(self):
+        s = load_schema(FIXTURES / "valid_table")
+        mk = s.metadata_keys
+        # Frontmatter fields
+        assert "title" in mk
+        assert "status" in mk
+        assert "tags" in mk
+        # Synthetic keys
+        assert "path" in mk
+        assert "h1" in mk
+        # Timestamps
+        assert "created" in mk
+        assert "modified" in mk
+        # Section names should NOT be in metadata_keys
+        # (sections are dynamic, not in this set)
+
     def test_load_strict_schema(self):
         s = load_schema(FIXTURES / "strict_table")
         assert s.table == "docs"

@@ -1,6 +1,6 @@
 ---
 title: "Tokenized T-Bill Weekend Redemption Discount Arb"
-status: HYPOTHESIS
+status: PAUSED
 mechanism: 7
 implementation: 3
 safety: 6
@@ -48,7 +48,8 @@ The arb is only executable by KYC'd redemption-eligible parties. If Zunid is not
 
 ---
 
-## Entry / Exit Rules
+## Entry Rules
+
 
 ### Entry
 - **Time:** Every Friday, 3:30pm–4:00pm ET (30-minute window after redemption cutoff)
@@ -57,6 +58,8 @@ The arb is only executable by KYC'd redemption-eligible parties. If Zunid is not
 - **Secondary condition:** DEX pool has ≥ $100k liquidity within 10bps of mid (to ensure fill is possible)
 - **Action:** Buy OUSG/USTB on DEX, targeting $50k–$200k notional (see position sizing)
 - **Do not enter** if: discount is < 20bps (fees eat the spread), pool depth < $100k, or NAV attestation is >24h stale
+
+## Exit Rules
 
 ### Exit — Primary (with redemption access)
 - **Time:** Monday 9:00am ET

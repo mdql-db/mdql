@@ -50,7 +50,8 @@ BNB/OKB prices are driven by many factors (exchange revenue, token burns, broade
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Primary Strategy: Cross-Exchange Spot Premium
 
@@ -65,6 +66,8 @@ BNB/OKB prices are driven by many factors (exchange revenue, token burns, broade
 - On the peer exchange: short equivalent BTC/ETH perp to hedge directional exposure
 - Net position: long the spread (announcing exchange premium over peer)
 - Only enter if the spread at entry is within ±0.05% of zero (i.e., no pre-existing premium — you are not chasing)
+
+## Exit Rules
 
 **Exit:**
 - Primary exit: T+48h after audit results are published (not after snapshot — after publication)
@@ -182,7 +185,7 @@ Abandon the strategy if any of the following occur:
 
 ---
 
-## Risks — Honest Assessment
+## Risks
 
 **Risk 1 — Small sample, large noise (HIGH)**
 15–30 events is not enough to distinguish edge from luck. Every metric will have wide confidence intervals. This is the dominant risk. Mitigation: treat backtest as mechanism validation, not performance projection.

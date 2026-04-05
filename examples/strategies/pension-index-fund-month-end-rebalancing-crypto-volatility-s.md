@@ -82,7 +82,8 @@ Index Coop's DeFi Pulse Index (DPI) and Metaverse Index (MVI) rebalance on-chain
 
 ---
 
-## Entry and Exit Rules
+## Entry Rules
+
 
 ### Signal generation (run daily, T-5 through T-1 before rebalancing date)
 
@@ -110,6 +111,8 @@ FOR each constituent asset_i in each tracked index:
 - **Entry instrument:** Hyperliquid perpetual futures for the relevant asset
 - **Entry type:** Limit order within 0.1% of mid-price; if not filled within 2 hours, use market order
 - **Rationale for T-2:** Early enough to capture pre-rebalancing drift as other informed participants front-run; late enough that the weight drift calculation is near-final
+
+## Exit Rules
 
 ### Exit
 

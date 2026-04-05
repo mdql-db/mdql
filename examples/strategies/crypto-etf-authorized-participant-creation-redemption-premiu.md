@@ -259,7 +259,7 @@ All of the following must be satisfied before live deployment:
 
 ---
 
-## Risks and Mitigants
+## Risks
 
 ### Risk 1: AP Pre-Hedges in CME Futures, Not Spot
 **Description:** APs may hedge their BTC exposure using CME Bitcoin futures rather than spot or perps. If so, the flow Zunid anticipates never hits BTC spot/Hyperliquid perps.
@@ -294,7 +294,7 @@ All of the following must be satisfied before live deployment:
 
 ---
 
-## Data Sources (Detailed)
+## Data Sources
 
 | Data | Source | URL | Refresh | Notes |
 |------|--------|-----|---------|-------|

@@ -14,7 +14,7 @@ created: "2026-04-03"
 pipeline_stage: "Pre-backtest (step 2 of 9)"
 ---
 
-## 1. Hypothesis
+## Hypothesis
 
 When a Morpho Blue curator (Gauntlet, B.Protocol, Re7, Steakhouse) executes a large reallocation that drains liquidity from a single lending market, the mechanical consequence is an instantaneous utilization spike in that market. Borrowers in that market now face elevated borrow rates above the kink threshold. A subset of those borrowers — specifically leveraged yield farmers and looping strategies — face negative carry and are economically compelled to unwind within hours. Unwinding requires repaying debt and selling or withdrawing collateral. The collateral asset therefore faces net sell pressure that is predictable, directional, and causally linked to an on-chain event that is publicly visible before the price impact fully materializes.
 
@@ -30,7 +30,7 @@ Links 1–3 are **contractually guaranteed** by Morpho's rate model. Links 4–6
 
 ---
 
-## 2. Structural Mechanism
+## Structural Mechanism
 
 ### 2.1 Morpho Blue Architecture
 
@@ -69,7 +69,7 @@ The fastest unwinds come from automated vaults — these can respond within minu
 
 ---
 
-## 3. Signal Definition
+## Signal Definition
 
 ### 3.1 Primary Signal Conditions (ALL must be true)
 
@@ -102,7 +102,7 @@ Maintain a live registry. Starting list (verify on-chain before use):
 
 ---
 
-## 4. Entry Rules
+## Entry Rules
 
 ### 4.1 Entry Procedure
 
@@ -121,7 +121,7 @@ Maintain a live registry. Starting list (verify on-chain before use):
 
 ---
 
-## 5. Exit Rules
+## Exit Rules
 
 ### 5.1 Primary Exit Triggers (first to fire wins)
 
@@ -144,7 +144,7 @@ This structure captures the fast initial move while allowing the tail of slower 
 
 ---
 
-## 6. Position Sizing
+## Position Sizing
 
 ### 6.1 Base Sizing Rule
 
@@ -176,7 +176,7 @@ Before entry, check Hyperliquid funding rate for the collateral perp. If funding
 
 ---
 
-## 7. Backtest Methodology
+## Backtest Methodology
 
 ### 7.1 Data Collection
 
@@ -237,7 +237,7 @@ Run backtest separately for:
 
 ---
 
-## 8. Go-Live Criteria
+## Go-Live Criteria
 
 All of the following must be satisfied before allocating real capital:
 
@@ -251,7 +251,7 @@ All of the following must be satisfied before allocating real capital:
 
 ---
 
-## 9. Kill Criteria
+## Kill Criteria
 
 Suspend the strategy immediately if any of the following occur:
 
@@ -266,7 +266,7 @@ Suspend the strategy immediately if any of the following occur:
 
 ---
 
-## 10. Risks and Mitigations
+## Risks
 
 ### 10.1 Price Impact Too Small on Large Collateral Assets
 
@@ -316,7 +316,7 @@ Suspend the strategy immediately if any of the following occur:
 
 ---
 
-## 11. Data Sources
+## Data Sources
 
 | Data | Source | Access | Cost |
 |------|--------|--------|------|
@@ -333,7 +333,7 @@ Suspend the strategy immediately if any of the following occur:
 
 ---
 
-## 12. Implementation Checklist
+## Implementation Checklist
 
 ### Pre-Backtest (Current Stage)
 - [ ] Pull all MetaMorpho vault addresses from Morpho factory contract
@@ -365,7 +365,7 @@ Suspend the strategy immediately if any of the following occur:
 
 ---
 
-## 13. Open Questions for Researcher Review
+## Open Questions for Researcher Review
 
 1. **Borrower response speed:** Is there on-chain data showing how quickly leveraged borrowers in Morpho markets unwind after rate spikes? Query historical borrow repayment events in the 24 hours following past utilization spikes to estimate the response distribution.
 

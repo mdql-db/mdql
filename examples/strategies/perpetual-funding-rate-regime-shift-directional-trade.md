@@ -43,7 +43,7 @@ This is a hypothesis — the causal chain (funding regime → price continuation
 
 ---
 
-## Proposed Backtest Methodology
+## Backtest Methodology
 
 ### Data
 
@@ -122,7 +122,8 @@ If any of these are not met, kill or redesign before paper trading.
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Universe
 
@@ -147,6 +148,8 @@ Do not expand to smaller-cap assets in the paper trading phase. Funding rates on
 - **Leverage:** 2x maximum
 - **Position size:** See sizing section below
 - **Slippage budget:** Assume 0.05% slippage on entry for BTC/ETH; 0.10% for SOL
+
+## Exit Rules
 
 ### Exits (in priority order)
 

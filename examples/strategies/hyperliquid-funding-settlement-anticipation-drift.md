@@ -88,7 +88,8 @@ Do not trade if any of the following are true at T-45min:
 
 ---
 
-## Entry and Exit Rules
+## Entry Rules
+
 
 ### Trade A: Pre-Settlement Fade (primary trade)
 
@@ -137,6 +138,9 @@ Do not trade if any of the following are true at T-45min:
 
 ---
 
+## Exit Rules
+
+Defined within Entry Rules section.
 ## Position Sizing
 
 **Base position size:** 0.5% of total trading capital per trade.

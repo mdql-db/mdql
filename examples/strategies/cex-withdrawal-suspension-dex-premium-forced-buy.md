@@ -54,7 +54,8 @@ This is a **mechanical constraint**, not a behavioral one. Even a perfectly rati
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Universe Filter (apply before entry)
 - Token must have active DEX liquidity pool (Uniswap v3, Curve, or equivalent) with ≥$500K TVL
@@ -69,6 +70,8 @@ This is a **mechanical constraint**, not a behavioral one. Even a perfectly rati
 - **Venue:** DEX spot (Uniswap v3, Curve, or deepest available pool for that token)
 - **Condition check:** Confirm withdrawal is not yet suspended at time of entry (announcements often give 15–60 min lead time)
 - **Do not enter** if the suspension has already been active for >2 hours (premium may already be captured or absent)
+
+## Exit Rules
 
 ### Exit
 **Primary exit (ordered by priority):**

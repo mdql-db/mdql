@@ -1,6 +1,6 @@
 ---
 title: "Leveraged Crypto ETF Rebalancing Front-Run"
-status: HYPOTHESIS
+status: KILLED
 mechanism: 7
 implementation: 7
 safety: 6
@@ -10,7 +10,9 @@ categories:
   - index-rebalance
   - basis-trade
 created: "2025-01-31"
-pipeline_stage: "Pre-backtest (step 2 of 9)"
+pipeline_stage: "Killed at backtest (step 4 of 9)"
+killed: "2026-04-05"
+kill_reason: "Backtest: 109 trades, 25.7% win rate, -0.29%/trade. Post-BITX period (65 trades) worse than pre-BITX control (18.5% vs 36.4% WR). Larger moves produce worse results — market already fades the rebalancing. Edge vs baseline is negative (-0.26%)."
 ---
 
 ## Hypothesis
@@ -58,7 +60,8 @@ This is not optional. Failure to rebalance means the fund delivers a leverage ra
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Trigger Conditions
 - Asset: BTC or ETH (run separately, do not combine into one position)
@@ -70,6 +73,8 @@ This is not optional. Failure to rebalance means the fund delivers a leverage ra
 - **Instrument:** BTC-PERP or ETH-PERP on Hyperliquid
 - **Entry time:** 3:00 PM ET (market order, or limit within 0.1% of mid)
 - **Entry price:** Record for P&L calculation
+
+## Exit Rules
 
 ### Exit
 - **Primary exit:** 4:10 PM ET market order (10 minutes into the rebalance window, capturing peak impact)

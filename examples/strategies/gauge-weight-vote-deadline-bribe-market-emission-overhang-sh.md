@@ -55,7 +55,8 @@ veCRV/veBAL/veVELO holders receive bribe tokens from Votium, Hidden Hand, and Ve
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Universe selection (pre-trade filter)
 
@@ -73,6 +74,8 @@ Only trade bribe tokens that meet ALL of the following:
 4. **Entry price:** Market order (or aggressive limit within 0.3% of mid) on Hyperliquid perp or CEX spot short
 5. **Entry window:** Only enter within **4 hours** of trigger. If trigger is missed, skip the epoch — do not chase
 6. **Confirmation filter (optional, reduces false positives):** Require that ≥10 unique wallet addresses have claimed before entry (prevents single large whale claim from triggering)
+
+## Exit Rules
 
 ### Exit
 
@@ -210,7 +213,7 @@ Abandon the strategy if any of the following occur:
 
 ---
 
-## Data Sources (Summary)
+## Data Sources
 
 | Source | What it provides | Access |
 |---|---|---|

@@ -67,7 +67,8 @@ When rate decreases:
 
 ---
 
-## Entry and Exit Rules
+## Entry Rules
+
 
 ### Variant A: Rate Increase — Buy sDAI Premium Play
 
@@ -80,6 +81,8 @@ When rate decreases:
 - Buy sDAI on Curve (or mint directly if pool premium is <0.05%)
 - Alternatively: provide DAI-side liquidity to sDAI/DAI Curve pool to capture fee income from incoming flow imbalance
 - Position size: see sizing section
+
+## Exit Rules
 
 **Exit Trigger (first of):**
 - sDAI Curve pool reaches >60% DAI composition (flow has arrived, premium likely peaked)
@@ -252,7 +255,7 @@ The most important risk is that this edge was real in 2022–2023 when DSR chang
 
 ---
 
-## Data Sources (Detailed)
+## Data Sources
 
 ```
 PRIMARY:

@@ -59,7 +59,8 @@ The liquidation trigger is a protocol rule, not a human decision. Bots cannot ch
 
 ---
 
-## Entry and Exit Rules
+## Entry Rules
+
 
 ### Leg A — Momentum Short (Pre-Liquidation)
 
@@ -74,6 +75,8 @@ The liquidation trigger is a protocol rule, not a human decision. Bots cannot ch
 **Entry mechanics:**
 - Enter market order on Hyperliquid perp short at the moment all five conditions are satisfied.
 - Record the cluster level price as `P_cluster`.
+
+## Exit Rules
 
 **Exit conditions (first trigger wins):**
 
@@ -147,7 +150,7 @@ Run a maximum of two simultaneous Leg A positions (one ETH, one BTC). Never run 
 
 ---
 
-## Data Sources and Infrastructure
+## Data Sources
 
 ### Required Data Feeds
 
@@ -242,7 +245,7 @@ Stop trading and return to research immediately if any of the following occur:
 
 ---
 
-## Risk Register
+## Risks
 
 | Risk | Severity | Probability | Mitigation |
 |---|---|---|---|

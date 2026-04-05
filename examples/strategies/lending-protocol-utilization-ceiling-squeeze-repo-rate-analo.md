@@ -75,7 +75,8 @@ Deposit APY = Borrow APY × Utilization. At 90% utilization and 43% borrow APY, 
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Universe
 
@@ -106,6 +107,8 @@ Priority pools to monitor (as of 2025):
 - Open short on Hyperliquid perp of the primary collateral asset
 - Use market order or limit order within 0.1% of mid (not time-sensitive enough to require aggressive fills)
 - Record entry utilization, entry borrow rate, entry timestamp
+
+## Exit Rules
 
 ### Exit Signal
 

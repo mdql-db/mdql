@@ -47,7 +47,8 @@ This is structurally similar to forced redemptions in a fund: the selling is not
 
 ---
 
-## Entry/Exit Rules
+## Entry Rules
+
 
 ### Signal Detection
 - **Trigger:** Hyperliquid insurance fund balance decreases by ≥5% within any rolling 24-hour window
@@ -60,6 +61,8 @@ This is structurally similar to forced redemptions in a fund: the selling is not
 - Enter at the **open of the next 4-hour candle** after signal confirmation
 - Use the asset with the highest open interest on Hyperliquid at time of signal (use HL API to confirm — typically BTC-PERP)
 - Entry is a **market order** (or aggressive limit within 0.1% of mid)
+
+## Exit Rules
 
 ### Exit
 - **Primary exit:** Close position at the open of the candle 48 hours after entry
@@ -129,7 +132,7 @@ Hyperliquid launched in 2023. Severe ADL events (fund drop >5% in 24h) may have 
 
 ---
 
-## Go-Live Criteria (Paper Trading)
+## Go-Live Criteria
 
 Before moving to paper trade, the backtest must show:
 
@@ -157,7 +160,7 @@ Abandon the strategy if any of the following occur:
 
 ---
 
-## Risks — Honest Assessment
+## Risks
 
 ### Data Risk (HIGH)
 The entire strategy depends on historical insurance fund balance data that may not exist in queryable form. This is the single biggest blocker. Do not spend engineering time on the backtest until data availability is confirmed.

@@ -13,13 +13,13 @@ created: "2026-04-03"
 pipeline_stage: "Pre-backtest (step 2 of 9)"
 ---
 
-## 1. Hypothesis
+## Hypothesis
 
 When Hyperliquid's HLP vault accumulates directional delta exposure beyond its normal operating range — typically after a large liquidation event or sustained funding anomaly — it faces structural pressure to reduce that exposure back toward delta-neutral. Because HLP's position state is publicly readable on the Hyperliquid L1 in near-real-time, and because HLP's rebalancing behavior is rule-based rather than discretionary, an observer can identify the imbalance before the rebalancing trade executes and take an opposing position that profits from the mean-reversion in HLP's delta. The edge is not that HLP *tends* to rebalance — it is that HLP *must* rebalance to preserve its market-making function, and the trigger state is publicly observable before the action occurs.
 
 ---
 
-## 2. Structural Mechanism
+## Structural Mechanism
 
 ### 2.1 What HLP Is
 
@@ -57,7 +57,7 @@ Observer exits with profit
 
 ---
 
-## 3. Entry Rules
+## Entry Rules
 
 ### 3.1 Signal Definition
 
@@ -85,7 +85,7 @@ Initially limit to: **BTC, ETH, SOL** — the three assets where HLP carries the
 
 ---
 
-## 4. Exit Rules
+## Exit Rules
 
 ### 4.1 Primary Exit — Signal Normalization
 
@@ -105,7 +105,7 @@ At **0.8% profit**, take off 50% of the position and move the stop on the remain
 
 ---
 
-## 5. Position Sizing
+## Position Sizing
 
 ### 5.1 Base Sizing Rule
 
@@ -129,7 +129,7 @@ After 30 confirmed live trades with positive expectancy, scale to **1.0% portfol
 
 ---
 
-## 6. Backtest Methodology
+## Backtest Methodology
 
 ### 6.1 Data Collection (Weeks 1–4)
 
@@ -177,7 +177,7 @@ Run the backtest under three threshold variants: **1.5×, 2.0×, 2.5×** median 
 
 ---
 
-## 7. Forward Observation Period (Pre-Backtest Gate)
+## Forward Observation Period (Pre-Backtest Gate)
 
 Before committing to a full backtest, run a **30-day forward observation** (paper only, no capital):
 
@@ -190,7 +190,7 @@ Before committing to a full backtest, run a **30-day forward observation** (pape
 
 ---
 
-## 8. Go-Live Criteria
+## Go-Live Criteria
 
 All of the following must be satisfied before deploying real capital:
 
@@ -202,7 +202,7 @@ All of the following must be satisfied before deploying real capital:
 
 ---
 
-## 9. Kill Criteria
+## Kill Criteria
 
 Suspend the strategy immediately if any of the following occur:
 
@@ -217,7 +217,7 @@ Suspend the strategy immediately if any of the following occur:
 
 ---
 
-## 10. Risks
+## Risks
 
 ### 10.1 HLP Does Not Rebalance on Schedule
 **Risk:** HLP vault operators may choose to hold a directional position intentionally (e.g., they believe the move will reverse). The rebalancing is structurally incentivized but not contractually forced on a fixed schedule.
@@ -245,7 +245,7 @@ Suspend the strategy immediately if any of the following occur:
 
 ---
 
-## 11. Data Sources
+## Data Sources
 
 | Source | URL / Access Method | Cost | Use |
 |---|---|---|---|
@@ -258,7 +258,7 @@ Suspend the strategy immediately if any of the following occur:
 
 ---
 
-## 12. Open Questions (Must Resolve Before Backtest)
+## Open Questions (Must Resolve Before Backtest)
 
 1. **What is the actual API latency** for HLP position updates? Is it real-time, 1-minute delayed, or longer?
 2. **Does HLP rebalance in one large trade or gradually?** If gradual, the price impact is spread over hours and the entry timing matters more.
@@ -268,7 +268,7 @@ Suspend the strategy immediately if any of the following occur:
 
 ---
 
-## 13. Next Actions
+## Next Actions
 
 | Action | Owner | Deadline | Blocker |
 |---|---|---|---|
