@@ -8,6 +8,7 @@ from collections import Counter
 from mdql.errors import ValidationError
 from mdql.parser import ParsedFile
 from mdql.schema import Schema
+from mdql.stamp import TIMESTAMP_FIELDS
 
 
 def validate_file(parsed: ParsedFile, schema: Schema) -> list[ValidationError]:
@@ -52,10 +53,17 @@ def validate_file(parsed: ParsedFile, schema: Schema) -> list[ValidationError]:
                     )
                 )
 
+    # Validate timestamp fields if present (global convention, no schema needed)
+    for ts_field in TIMESTAMP_FIELDS:
+        if ts_field in fm:
+            ts_err = _check_type(fm[ts_field], "date", ts_field)
+            if ts_err:
+                errors.append(ValidationError(fp, "type_mismatch", ts_field, ts_err))
+
     # Unknown frontmatter
     if schema.reject_unknown_frontmatter:
         for key in fm:
-            if key not in schema.frontmatter:
+            if key not in schema.frontmatter and key not in TIMESTAMP_FIELDS:
                 errors.append(
                     ValidationError(
                         fp, "unknown_field", key,

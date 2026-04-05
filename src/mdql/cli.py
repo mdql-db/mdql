@@ -164,6 +164,28 @@ def _print_table_schema(s) -> None:
 
 
 @app.command()
+def stamp(
+    folder: Path = typer.Argument(..., help="Path to table folder"),
+) -> None:
+    """Add or update created/modified timestamps in all data files."""
+    from mdql.stamp import stamp_table
+
+    try:
+        results = stamp_table(folder)
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1)
+
+    created_count = sum(1 for _, r in results if r["created_set"])
+    modified_count = sum(1 for _, r in results if r["modified_updated"])
+
+    typer.echo(
+        f"Stamped {len(results)} files: "
+        f"{created_count} created set, {modified_count} modified updated"
+    )
+
+
+@app.command()
 def query(
     folder: Path = typer.Argument(..., help="Path to table or database folder"),
     sql: str = typer.Argument(..., help="SQL-like query string"),
