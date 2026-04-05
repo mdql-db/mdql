@@ -8,11 +8,11 @@ class MdqlError(Exception):
 
 
 class SchemaNotFoundError(MdqlError):
-    """Raised when _schema.md is missing from a table directory."""
+    """Raised when _mdql.md is missing from a table directory."""
 
 
 class SchemaInvalidError(MdqlError):
-    """Raised when _schema.md fails meta-schema validation."""
+    """Raised when _mdql.md (type: schema) fails meta-schema validation."""
 
 
 class ParseError(MdqlError):
@@ -28,7 +28,7 @@ class QueryExecutionError(MdqlError):
 
 
 class DatabaseConfigError(MdqlError):
-    """Raised when _database.md is missing or invalid."""
+    """Raised when _mdql.md (type: database) is missing or invalid."""
 
 
 @dataclass

@@ -1,6 +1,6 @@
-"""Load and validate _schema.md files.
+"""Load and validate table-level _mdql.md files (type: schema).
 
-Schema files are markdown files where the structured config lives in
+These are markdown files where the structured config lives in
 YAML frontmatter and the body serves as human-readable documentation.
 """
 
@@ -12,7 +12,7 @@ from pathlib import Path
 from mdql.errors import SchemaInvalidError, SchemaNotFoundError
 from mdql.parser import parse_file
 
-SCHEMA_FILENAME = "_schema.md"
+MDQL_FILENAME = "_mdql.md"
 
 VALID_FIELD_TYPES = {"string", "int", "float", "bool", "date", "string[]"}
 VALID_SECTION_TYPES = {"markdown", "text"}
@@ -46,16 +46,16 @@ class Schema:
 
 
 def load_schema(folder: Path) -> Schema:
-    """Load _schema.md from a table folder and return a Schema."""
-    schema_path = folder / SCHEMA_FILENAME
+    """Load _mdql.md (type: schema) from a table folder and return a Schema."""
+    schema_path = folder / MDQL_FILENAME
     if not schema_path.exists():
-        raise SchemaNotFoundError(f"No {SCHEMA_FILENAME} in {folder}")
+        raise SchemaNotFoundError(f"No {MDQL_FILENAME} in {folder}")
 
     parsed = parse_file(schema_path, relative_to=folder)
 
     if parsed.parse_errors:
         raise SchemaInvalidError(
-            f"Cannot parse {SCHEMA_FILENAME}: {'; '.join(parsed.parse_errors)}"
+            f"Cannot parse {MDQL_FILENAME}: {'; '.join(parsed.parse_errors)}"
         )
 
     fm = parsed.raw_frontmatter
@@ -66,18 +66,18 @@ def load_schema(folder: Path) -> Schema:
     for name, spec in (fm.get("frontmatter") or {}).items():
         if not isinstance(spec, dict):
             raise SchemaInvalidError(
-                f"{SCHEMA_FILENAME}: frontmatter.{name} must be a mapping"
+                f"{MDQL_FILENAME}: frontmatter.{name} must be a mapping"
             )
         ftype = spec.get("type", "string")
         if ftype not in VALID_FIELD_TYPES:
             raise SchemaInvalidError(
-                f"{SCHEMA_FILENAME}: frontmatter.{name} has invalid type '{ftype}'. "
+                f"{MDQL_FILENAME}: frontmatter.{name} has invalid type '{ftype}'. "
                 f"Valid types: {', '.join(sorted(VALID_FIELD_TYPES))}"
             )
         enum_vals = spec.get("enum")
         if enum_vals is not None and not isinstance(enum_vals, list):
             raise SchemaInvalidError(
-                f"{SCHEMA_FILENAME}: frontmatter.{name}.enum must be a list"
+                f"{MDQL_FILENAME}: frontmatter.{name}.enum must be a list"
             )
         frontmatter_defs[name] = FieldDef(
             type=ftype,
@@ -90,12 +90,12 @@ def load_schema(folder: Path) -> Schema:
     for name, spec in (fm.get("sections") or {}).items():
         if not isinstance(spec, dict):
             raise SchemaInvalidError(
-                f"{SCHEMA_FILENAME}: sections.{name} must be a mapping"
+                f"{MDQL_FILENAME}: sections.{name} must be a mapping"
             )
         stype = spec.get("type", "markdown")
         if stype not in VALID_SECTION_TYPES:
             raise SchemaInvalidError(
-                f"{SCHEMA_FILENAME}: sections.{name} has invalid type '{stype}'"
+                f"{MDQL_FILENAME}: sections.{name} has invalid type '{stype}'"
             )
         section_defs[name] = SectionDef(
             type=stype,

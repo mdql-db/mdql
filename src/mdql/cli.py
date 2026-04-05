@@ -12,6 +12,28 @@ from mdql.loader import load_table
 from mdql.projector import format_results
 from mdql.schema import load_schema
 
+import yaml
+
+
+def _is_database_dir(folder: Path) -> bool:
+    """Check if a folder contains a _mdql.md with type: database."""
+    from mdql.schema import MDQL_FILENAME
+    mdql_file = folder / MDQL_FILENAME
+    if not mdql_file.exists():
+        return False
+    try:
+        text = mdql_file.read_text(encoding="utf-8")
+        lines = text.split("\n")
+        if lines and lines[0].strip() == "---":
+            for i in range(1, len(lines)):
+                if lines[i].strip() == "---":
+                    fm = yaml.safe_load("\n".join(lines[1:i]))
+                    return isinstance(fm, dict) and fm.get("type") == "database"
+    except Exception:
+        pass
+    return False
+
+
 app = typer.Typer(
     name="mdql",
     help="A strict Markdown database with SQL-like queries.",
@@ -71,9 +93,9 @@ def schema(
     folder: Path = typer.Argument(..., help="Path to table or database folder"),
 ) -> None:
     """Print the effective schema for a table or entire database."""
-    from mdql.database import DATABASE_FILENAME
+    from mdql.schema import MDQL_FILENAME
 
-    is_db = (folder / DATABASE_FILENAME).exists()
+    is_db = _is_database_dir(folder)
 
     if is_db:
         try:
@@ -89,7 +111,7 @@ def schema(
         # Find all table subdirectories
         table_dirs = sorted(
             d for d in folder.iterdir()
-            if d.is_dir() and (d / "_schema.md").exists()
+            if d.is_dir() and (d / MDQL_FILENAME).exists()
         )
 
         for td in table_dirs:
@@ -149,7 +171,6 @@ def query(
     truncate: int = typer.Option(80, "--truncate", "-t", help="Max chars per cell in table mode"),
 ) -> None:
     """Run a SQL-like query against a table or database."""
-    from mdql.database import DATABASE_FILENAME
     from mdql.query_engine import execute_join_query, execute_query
     from mdql.query_parser import parse_query
 
@@ -167,7 +188,7 @@ def query(
             result_rows, result_columns = execute_join_query(q, tables)
         else:
             # Single-table query
-            is_db = (folder / DATABASE_FILENAME).exists()
+            is_db = _is_database_dir(folder)
             if is_db:
                 # Folder is a database dir; find the table subdirectory
                 from mdql.loader import load_database

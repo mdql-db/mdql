@@ -4,15 +4,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from mdql.database import DATABASE_FILENAME, DatabaseConfig, load_database_config
+from mdql.database import DatabaseConfig, load_database_config
 from mdql.errors import ValidationError
 from mdql.model import Row, to_row
 from mdql.parser import parse_file
-from mdql.schema import SCHEMA_FILENAME, Schema, load_schema
+from mdql.schema import MDQL_FILENAME, Schema, load_schema
 from mdql.validator import validate_file
 
 # Files that are not data rows
-RESERVED_FILES = {SCHEMA_FILENAME, DATABASE_FILENAME}
+RESERVED_FILES = {MDQL_FILENAME}
 
 
 def load_table(
@@ -63,7 +63,7 @@ def load_database(
     all_errors: list[ValidationError] = []
 
     for child in sorted(db_dir.iterdir()):
-        if child.is_dir() and (child / SCHEMA_FILENAME).exists():
+        if child.is_dir() and (child / MDQL_FILENAME).exists():
             schema, rows, errors = load_table(child)
             tables[schema.table] = (schema, rows)
             all_errors.extend(errors)
