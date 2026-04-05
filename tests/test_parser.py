@@ -120,7 +120,7 @@ class TestH2Sections:
 
 class TestSchemaFileAsMarkdown:
     def test_schema_file_parses_like_any_md(self):
-        p = parse_file(FIXTURES / "valid_table" / "_schema.md", relative_to=FIXTURES / "valid_table")
+        p = parse_file(FIXTURES / "valid_table" / "_mdql.md", relative_to=FIXTURES / "valid_table")
         assert p.raw_frontmatter["type"] == "schema"
         assert p.raw_frontmatter["table"] == "notes"
         assert not p.parse_errors

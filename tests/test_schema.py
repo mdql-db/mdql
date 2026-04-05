@@ -45,17 +45,17 @@ class TestLoadSchema:
             load_schema(tmp_path)
 
     def test_invalid_schema_missing_type(self, tmp_path):
-        (tmp_path / "_schema.md").write_text("---\ntable: test\n---\n")
+        (tmp_path / "_mdql.md").write_text("---\ntable: test\n---\n")
         with pytest.raises(SchemaInvalidError, match="type: schema"):
             load_schema(tmp_path)
 
     def test_invalid_schema_missing_table(self, tmp_path):
-        (tmp_path / "_schema.md").write_text("---\ntype: schema\n---\n")
+        (tmp_path / "_mdql.md").write_text("---\ntype: schema\n---\n")
         with pytest.raises(SchemaInvalidError, match="table"):
             load_schema(tmp_path)
 
     def test_invalid_field_type(self, tmp_path):
-        (tmp_path / "_schema.md").write_text(
+        (tmp_path / "_mdql.md").write_text(
             "---\ntype: schema\ntable: t\nfrontmatter:\n  x:\n    type: xml\n    required: true\n---\n"
         )
         with pytest.raises(SchemaInvalidError, match="invalid type 'xml'"):
