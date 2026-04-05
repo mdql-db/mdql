@@ -6,4 +6,3 @@ __pycache__/
 dist/
 build/
 .pytest_cache/
-uv.lock
