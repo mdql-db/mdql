@@ -140,11 +140,11 @@ The markdown body in both cases is documentation — ignored by the engine, valu
 ```python
 from mdql import Database, Table
 
-# Open a database
 db = Database("examples/")
+strategies = db.table("strategies")
 
-# Create a new strategy
-db.table("strategies").insert({
+# INSERT — create a new row, fail if exists
+strategies.insert({
     "title": "My New Strategy",
     "status": "HYPOTHESIS",
     "mechanism": 5,
@@ -155,22 +155,37 @@ db.table("strategies").insert({
     "categories": ["exchange-structure"],
     "pipeline_stage": "Pre-backtest (step 2 of 9)",
 })
-# → examples/strategies/my-new-strategy.md
+# → my-new-strategy.md (filename derived from title)
 #   created/modified timestamps set automatically
-#   required sections scaffolded
-#   file validated against schema before writing
+#   required sections scaffolded as empty ## headings
+#   validated against schema before writing
 
-# Work with a single table directly
-table = Table("examples/strategies/")
-rows, errors = table.load()
-validation_errors = table.validate()
+# INSERT with pre-formatted body (e.g. from Claude output)
+strategies.insert(
+    {"title": "Another Strategy", "status": "HYPOTHESIS", ...},
+    body=raw_markdown,  # verbatim after frontmatter
+)
+
+# INSERT ... ON CONFLICT REPLACE — overwrite, preserve created timestamp
+strategies.insert(
+    {"title": "Revised Strategy", "status": "BACKTESTING", ...},
+    filename="my-new-strategy",
+    replace=True,
+)
+
+# UPDATE — partial merge, only change what you pass
+strategies.update("my-new-strategy.md", {"status": "KILLED", "kill_reason": "No edge"})
+# existing frontmatter and body preserved, only status/kill_reason changed
+
+# UPDATE with new body
+strategies.update("my-new-strategy.md", {}, body=new_markdown)
+
+# Read
+rows, errors = strategies.load()
+validation_errors = strategies.validate()
 ```
 
-The filename is derived from `title` (slugified). Override with `filename=`:
-
-```python
-table.insert({"title": "My Strategy"}, filename="custom-name")
-```
+All writes are validated against the schema and rolled back on failure. The `created` timestamp is always preserved on `replace` and `update`; `modified` is always bumped.
 
 ## Commands
 
@@ -193,6 +208,30 @@ uv run mdql create examples/strategies/ \
 ```
 
 For `string[]` fields, use comma-separated values: `-s 'categories=funding-rates,defi'`
+
+### SQL write operations
+
+The `query` command supports full CRUD — not just SELECT:
+
+```bash
+# INSERT
+uv run mdql query examples/strategies/ \
+  "INSERT INTO strategies (title, status, mechanism, implementation, safety, frequency, composite, categories, pipeline_stage)
+   VALUES ('New Strategy', 'HYPOTHESIS', 5, 4, 7, 3, 420, 'exchange-structure', 'Pre-backtest')"
+# INSERT 1 (new-strategy.md)
+
+# UPDATE — change specific fields, body and other fields preserved
+uv run mdql query examples/strategies/ \
+  "UPDATE strategies SET status = 'KILLED', kill_reason = 'No edge' WHERE path = 'new-strategy.md'"
+# UPDATE 1
+
+# DELETE
+uv run mdql query examples/strategies/ \
+  "DELETE FROM strategies WHERE path = 'new-strategy.md'"
+# DELETE 1
+```
+
+All write operations go through schema validation. For `string[]` columns, pass comma-separated values in a single string: `'funding-rates,defi'`.
 
 ### `mdql validate <folder>`
 
@@ -232,6 +271,8 @@ uv run mdql query examples/strategies/ \
 uv run mdql query examples/strategies/ \
   "SELECT title, composite FROM strategies LIMIT 3" --format json
 ```
+
+Supported statements: `SELECT`, `INSERT INTO`, `UPDATE SET`, `DELETE FROM`
 
 Supported WHERE operators: `=`, `!=`, `<`, `>`, `<=`, `>=`, `LIKE`, `IN`, `IS NULL`, `IS NOT NULL`, `AND`, `OR`
 
@@ -340,7 +381,7 @@ Validation errors are handled via the `errors` parameter: `"warn"` (default), `"
 uv run pytest
 ```
 
-143 tests covering parser, validator, query engine, CLI, API, timestamps, pandas integration, and integration with real data.
+185 tests covering parser, validator, query engine, SQL CRUD, CLI, API, timestamps, pandas integration, and integration with real data.
 
 ## Project structure
 

@@ -2,9 +2,16 @@
 
 Supported grammar:
     SELECT columns FROM table
+    [JOIN table ON col = col]
     [WHERE predicates]
     [ORDER BY col [ASC|DESC] [, ...]]
     [LIMIT n]
+
+    INSERT INTO table (col, ...) VALUES (val, ...)
+
+    UPDATE table SET col = val [, ...] [WHERE predicates]
+
+    DELETE FROM table [WHERE predicates]
 
 Predicates: =, !=, <, >, <=, >=, LIKE, IN (...), IS NULL, IS NOT NULL
 Boolean: AND, OR (OR binds looser than AND)
@@ -63,12 +70,37 @@ class Query:
     limit: int | None = None
 
 
+@dataclass
+class InsertQuery:
+    table: str
+    columns: list[str]
+    values: list[Any]
+
+
+@dataclass
+class UpdateQuery:
+    table: str
+    assignments: list[tuple[str, Any]]
+    where: WhereClause | None = None
+
+
+@dataclass
+class DeleteQuery:
+    table: str
+    where: WhereClause | None = None
+
+
+# Union of all statement types
+Statement = Query | InsertQuery | UpdateQuery | DeleteQuery
+
+
 # ── Tokenizer ──────────────────────────────────────────────────────────────
 
 KEYWORDS = {
     "SELECT", "FROM", "WHERE", "AND", "OR", "ORDER", "BY",
     "ASC", "DESC", "LIMIT", "LIKE", "IN", "IS", "NOT", "NULL",
     "JOIN", "ON",
+    "INSERT", "INTO", "VALUES", "UPDATE", "SET", "DELETE",
 }
 
 _TOKEN_RE = re.compile(
@@ -152,7 +184,97 @@ class _Parser:
             return True
         return False
 
-    def parse_query(self) -> Query:
+    def parse_statement(self) -> Statement:
+        """Dispatch to the right parser based on the first keyword."""
+        t = self.peek()
+        if t is None:
+            raise QueryParseError("Empty query")
+        if t.type == "keyword":
+            if t.value == "SELECT":
+                return self.parse_select()
+            if t.value == "INSERT":
+                return self.parse_insert()
+            if t.value == "UPDATE":
+                return self.parse_update()
+            if t.value == "DELETE":
+                return self.parse_delete()
+        raise QueryParseError(f"Expected SELECT, INSERT, UPDATE, or DELETE, got '{t.raw}'")
+
+    def parse_insert(self) -> InsertQuery:
+        self.expect("keyword", "INSERT")
+        self.expect("keyword", "INTO")
+        table = self._parse_ident()
+
+        # Column list
+        self.expect("op", "(")
+        columns = [self._parse_ident()]
+        while self.peek() and self.peek().type == "op" and self.peek().value == ",":
+            self.advance()
+            columns.append(self._parse_ident())
+        self.expect("op", ")")
+
+        self.expect("keyword", "VALUES")
+
+        # Value list
+        self.expect("op", "(")
+        values = [self._parse_value()]
+        while self.peek() and self.peek().type == "op" and self.peek().value == ",":
+            self.advance()
+            values.append(self._parse_value())
+        self.expect("op", ")")
+
+        if len(columns) != len(values):
+            raise QueryParseError(
+                f"Column count ({len(columns)}) does not match value count ({len(values)})"
+            )
+
+        self._expect_end()
+        return InsertQuery(table=table, columns=columns, values=values)
+
+    def parse_update(self) -> UpdateQuery:
+        self.expect("keyword", "UPDATE")
+        table = self._parse_ident()
+        self.expect("keyword", "SET")
+
+        assignments: list[tuple[str, Any]] = []
+        col = self._parse_ident()
+        self.expect("op", "=")
+        val = self._parse_value()
+        assignments.append((col, val))
+
+        while self.peek() and self.peek().type == "op" and self.peek().value == ",":
+            self.advance()
+            col = self._parse_ident()
+            self.expect("op", "=")
+            val = self._parse_value()
+            assignments.append((col, val))
+
+        where: WhereClause | None = None
+        if self.match_keyword("WHERE"):
+            where = self._parse_or_expr()
+
+        self._expect_end()
+        return UpdateQuery(table=table, assignments=assignments, where=where)
+
+    def parse_delete(self) -> DeleteQuery:
+        self.expect("keyword", "DELETE")
+        self.expect("keyword", "FROM")
+        table = self._parse_ident()
+
+        where: WhereClause | None = None
+        if self.match_keyword("WHERE"):
+            where = self._parse_or_expr()
+
+        self._expect_end()
+        return DeleteQuery(table=table, where=where)
+
+    def _expect_end(self) -> None:
+        if self.peek() is not None:
+            raise QueryParseError(
+                f"Unexpected token '{self.peek().raw}' at position {self.pos}"
+            )
+
+    def parse_select(self) -> Query:
         self.expect("keyword", "SELECT")
         columns = self._parse_columns()
 
@@ -193,10 +315,7 @@ class _Parser:
             limit_token = self.expect("number")
             limit = int(limit_token.value)
 
-        if self.peek() is not None:
-            raise QueryParseError(
-                f"Unexpected token '{self.peek().raw}' at position {self.pos}"
-            )
+        self._expect_end()
 
         return Query(
             columns=columns, table=table, table_alias=table_alias,
@@ -332,10 +451,13 @@ class _Parser:
         return OrderSpec(col, desc)
 
 
-def parse_query(sql: str) -> Query:
-    """Parse a SQL-like query string into a Query AST."""
+def parse_query(sql: str) -> Statement:
+    """Parse a SQL-like query string into a Statement AST.
+
+    Returns one of: Query (SELECT), InsertQuery, UpdateQuery, DeleteQuery.
+    """
     tokens = _tokenize(sql)
     if not tokens:
         raise QueryParseError("Empty query")
     parser = _Parser(tokens)
-    return parser.parse_query()
+    return parser.parse_statement()

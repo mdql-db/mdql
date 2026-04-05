@@ -239,40 +239,62 @@ def query(
     format: str = typer.Option("table", "--format", help="Output format: table, json, csv"),
     truncate: int = typer.Option(80, "--truncate", "-t", help="Max chars per cell in table mode"),
 ) -> None:
-    """Run a SQL-like query against a table or database."""
-    from mdql.query_engine import execute_join_query, execute_query
-    from mdql.query_parser import parse_query
+    """Run a SQL statement against a table or database.
+
+    Supports SELECT, INSERT INTO, UPDATE SET, and DELETE FROM.
+    """
+    from mdql.query_parser import (
+        DeleteQuery,
+        InsertQuery,
+        Query,
+        UpdateQuery,
+        parse_query,
+    )
 
     try:
-        q = parse_query(sql)
+        stmt = parse_query(sql)
     except MdqlError as e:
         typer.echo(f"Query error: {e}", err=True)
         raise typer.Exit(1)
 
     try:
-        if q.join is not None:
-            # JOIN query: folder must be a database directory
-            from mdql.loader import load_database
-            db_config, tables, errors = load_database(folder)
-            result_rows, result_columns = execute_join_query(q, tables)
-        else:
-            # Single-table query
+        # Write statements (INSERT/UPDATE/DELETE) go through Table API
+        if isinstance(stmt, (InsertQuery, UpdateQuery, DeleteQuery)):
             is_db = _is_database_dir(folder)
             if is_db:
-                # Folder is a database dir; find the table subdirectory
+                from mdql.api import Database
+                db = Database(folder)
+                table = db.table(stmt.table)
+            else:
+                from mdql.api import Table
+                table = Table(folder)
+            result = table.execute_sql(sql)
+            typer.echo(result)
+            return
+
+        # SELECT queries
+        from mdql.query_engine import execute_join_query, execute_query
+
+        if stmt.join is not None:
+            from mdql.loader import load_database
+            db_config, tables, errors = load_database(folder)
+            result_rows, result_columns = execute_join_query(stmt, tables)
+        else:
+            is_db = _is_database_dir(folder)
+            if is_db:
                 from mdql.loader import load_database
                 db_config, tables, errors = load_database(folder)
-                if q.table not in tables:
-                    typer.echo(f"Error: table '{q.table}' not found in database", err=True)
+                if stmt.table not in tables:
+                    typer.echo(f"Error: table '{stmt.table}' not found in database", err=True)
                     raise typer.Exit(1)
-                schema, rows = tables[q.table]
+                schema, rows = tables[stmt.table]
             else:
                 schema, rows, errors = load_table(folder)
-            result_rows, result_columns = execute_query(q, rows, schema)
+            result_rows, result_columns = execute_query(stmt, rows, schema)
+
+        typer.echo(
+            format_results(result_rows, columns=result_columns, output_format=format, truncate=truncate)
+        )
     except MdqlError as e:
         typer.echo(f"Query error: {e}", err=True)
         raise typer.Exit(1)
-
-    typer.echo(
-        format_results(result_rows, columns=result_columns, output_format=format, truncate=truncate)
-    )
