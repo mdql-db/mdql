@@ -211,6 +211,277 @@ class TestTable:
         assert len(errors) == 0
 
 
+    def test_insert_with_body(self, tmp_path):
+        (tmp_path / "_mdql.md").write_text(
+            "---\ntype: schema\ntable: notes\n"
+            "frontmatter:\n"
+            "  title:\n    type: string\n    required: true\n"
+            "h1:\n  required: false\n"
+            "rules:\n  reject_unknown_sections: false\n---\n"
+        )
+
+        raw_body = "\n## Hypothesis\n\nWhen funding rates spike...\n\n## Entry Rules\n\n1. Wait for confirmation\n2. Enter short\n"
+
+        table = Table(tmp_path)
+        filepath = table.insert(
+            {"title": "Body Test"},
+            body=raw_body,
+        )
+
+        content = filepath.read_text()
+        # Frontmatter is generated from data
+        assert 'title: "Body Test"' in content
+        assert "created:" in content
+        # Body is passed through verbatim
+        assert "## Hypothesis" in content
+        assert "When funding rates spike..." in content
+        assert "## Entry Rules" in content
+        assert "1. Wait for confirmation" in content
+
+    def test_insert_body_overrides_section_data(self, tmp_path):
+        (tmp_path / "_mdql.md").write_text(
+            "---\ntype: schema\ntable: docs\n"
+            "frontmatter:\n"
+            "  title:\n    type: string\n    required: true\n"
+            "h1:\n  required: false\n"
+            "sections:\n"
+            "  Summary:\n    type: markdown\n    required: true\n---\n"
+        )
+
+        table = Table(tmp_path)
+        filepath = table.insert(
+            {"title": "Override Test", "Summary": "ignored"},
+            body="\n## Summary\n\nReal content from external source.\n",
+        )
+
+        content = filepath.read_text()
+        assert "Real content from external source." in content
+        assert "ignored" not in content
+
+    def test_insert_body_validates(self, tmp_path):
+        """Body that violates schema (missing required section) is rejected."""
+        (tmp_path / "_mdql.md").write_text(
+            "---\ntype: schema\ntable: docs\n"
+            "frontmatter:\n"
+            "  title:\n    type: string\n    required: true\n"
+            "h1:\n  required: false\n"
+            "sections:\n"
+            "  Summary:\n    type: markdown\n    required: true\n---\n"
+        )
+
+        table = Table(tmp_path)
+        with pytest.raises(MdqlError, match="Validation failed"):
+            table.insert(
+                {"title": "No Summary"},
+                body="\n## Wrong Section\n\nThis isn't Summary.\n",
+            )
+
+
+SIMPLE_SCHEMA = (
+    "---\ntype: schema\ntable: notes\n"
+    "frontmatter:\n"
+    "  title:\n    type: string\n    required: true\n"
+    "  status:\n    type: string\n    required: false\n"
+    "  priority:\n    type: int\n    required: false\n"
+    "h1:\n  required: false\n"
+    "rules:\n  reject_unknown_sections: false\n---\n"
+)
+
+
+class TestReplace:
+    def test_replace_overwrites(self, tmp_path):
+        (tmp_path / "_mdql.md").write_text(SIMPLE_SCHEMA)
+        table = Table(tmp_path)
+
+        table.insert({"title": "Original", "status": "draft"})
+        table.insert(
+            {"title": "Replaced", "status": "approved"},
+            filename="original",
+            replace=True,
+        )
+
+        content = (tmp_path / "original.md").read_text()
+        assert 'title: "Replaced"' in content
+        assert 'status: "approved"' in content
+
+    def test_replace_preserves_created(self, tmp_path):
+        (tmp_path / "_mdql.md").write_text(SIMPLE_SCHEMA)
+        table = Table(tmp_path)
+
+        table.insert({"title": "First"})
+        original = (tmp_path / "first.md").read_text()
+        original_created = next(
+            line for line in original.splitlines() if line.startswith("created:")
+        )
+
+        table.insert(
+            {"title": "Second Version"},
+            filename="first",
+            replace=True,
+        )
+
+        replaced = (tmp_path / "first.md").read_text()
+        replaced_created = next(
+            line for line in replaced.splitlines() if line.startswith("created:")
+        )
+        assert original_created == replaced_created
+
+    def test_replace_false_raises_on_conflict(self, tmp_path):
+        (tmp_path / "_mdql.md").write_text(SIMPLE_SCHEMA)
+        table = Table(tmp_path)
+
+        table.insert({"title": "Exists"})
+        with pytest.raises(MdqlError, match="already exists"):
+            table.insert({"title": "Exists"}, replace=False)
+
+    def test_replace_rolls_back_on_validation_failure(self, tmp_path):
+        schema = (
+            "---\ntype: schema\ntable: notes\n"
+            "frontmatter:\n"
+            "  title:\n    type: string\n    required: true\n"
+            "  status:\n    type: string\n    required: true\n"
+            "h1:\n  required: false\n---\n"
+        )
+        (tmp_path / "_mdql.md").write_text(schema)
+        table = Table(tmp_path)
+
+        table.insert({"title": "Good", "status": "ok"})
+        original = (tmp_path / "good.md").read_text()
+
+        with pytest.raises(MdqlError, match="Validation failed"):
+            # Missing required 'status' — should fail and roll back
+            table.insert({"title": "Bad"}, filename="good", replace=True)
+
+        # Original file should be restored
+        assert (tmp_path / "good.md").read_text() == original
+
+    def test_replace_with_body(self, tmp_path):
+        (tmp_path / "_mdql.md").write_text(SIMPLE_SCHEMA)
+        table = Table(tmp_path)
+
+        table.insert({"title": "Note"}, body="\n## Old\n\nOld content.\n")
+        table.insert(
+            {"title": "Note"},
+            body="\n## New\n\nNew content.\n",
+            filename="note",
+            replace=True,
+        )
+
+        content = (tmp_path / "note.md").read_text()
+        assert "New content." in content
+        assert "Old content." not in content
+
+
+class TestUpdate:
+    def test_update_changes_single_field(self, tmp_path):
+        (tmp_path / "_mdql.md").write_text(SIMPLE_SCHEMA)
+        table = Table(tmp_path)
+
+        table.insert({"title": "Note", "status": "draft", "priority": 3})
+        table.update("note.md", {"status": "approved"})
+
+        content = (tmp_path / "note.md").read_text()
+        assert 'status: "approved"' in content
+        assert 'title: "Note"' in content  # preserved
+        assert "priority: 3" in content  # preserved
+
+    def test_update_preserves_body(self, tmp_path):
+        (tmp_path / "_mdql.md").write_text(SIMPLE_SCHEMA)
+        table = Table(tmp_path)
+
+        table.insert(
+            {"title": "Note"},
+            body="\n## Hypothesis\n\nImportant content.\n",
+        )
+        table.update("note.md", {"status": "approved"})
+
+        content = (tmp_path / "note.md").read_text()
+        assert "Important content." in content
+
+    def test_update_replaces_body_when_given(self, tmp_path):
+        (tmp_path / "_mdql.md").write_text(SIMPLE_SCHEMA)
+        table = Table(tmp_path)
+
+        table.insert(
+            {"title": "Note"},
+            body="\n## Old\n\nOld stuff.\n",
+        )
+        table.update(
+            "note.md",
+            {},
+            body="\n## New\n\nNew stuff.\n",
+        )
+
+        content = (tmp_path / "note.md").read_text()
+        assert "New stuff." in content
+        assert "Old stuff." not in content
+
+    def test_update_preserves_created(self, tmp_path):
+        (tmp_path / "_mdql.md").write_text(SIMPLE_SCHEMA)
+        table = Table(tmp_path)
+
+        table.insert({"title": "Note"})
+        original = (tmp_path / "note.md").read_text()
+        original_created = next(
+            line for line in original.splitlines() if line.startswith("created:")
+        )
+
+        table.update("note.md", {"status": "done"})
+
+        updated = (tmp_path / "note.md").read_text()
+        updated_created = next(
+            line for line in updated.splitlines() if line.startswith("created:")
+        )
+        assert original_created == updated_created
+
+    def test_update_bumps_modified(self, tmp_path):
+        (tmp_path / "_mdql.md").write_text(SIMPLE_SCHEMA)
+        table = Table(tmp_path)
+
+        table.insert({"title": "Note"})
+        table.update("note.md", {"status": "done"})
+
+        content = (tmp_path / "note.md").read_text()
+        assert "modified:" in content
+
+    def test_update_nonexistent_raises(self, tmp_path):
+        (tmp_path / "_mdql.md").write_text(SIMPLE_SCHEMA)
+        table = Table(tmp_path)
+
+        with pytest.raises(MdqlError, match="File not found"):
+            table.update("nope.md", {"status": "draft"})
+
+    def test_update_rolls_back_on_validation_failure(self, tmp_path):
+        schema = (
+            "---\ntype: schema\ntable: notes\n"
+            "frontmatter:\n"
+            "  title:\n    type: string\n    required: true\n"
+            "  count:\n    type: int\n    required: true\n"
+            "h1:\n  required: false\n---\n"
+        )
+        (tmp_path / "_mdql.md").write_text(schema)
+        table = Table(tmp_path)
+
+        table.insert({"title": "Note", "count": 5})
+        original = (tmp_path / "note.md").read_text()
+
+        with pytest.raises(MdqlError, match="Validation failed"):
+            # Setting count to a string should fail type validation
+            table.update("note.md", {"count": "not-a-number"})
+
+        assert (tmp_path / "note.md").read_text() == original
+
+    def test_update_without_extension(self, tmp_path):
+        (tmp_path / "_mdql.md").write_text(SIMPLE_SCHEMA)
+        table = Table(tmp_path)
+
+        table.insert({"title": "Note"})
+        table.update("note", {"status": "done"})
+
+        content = (tmp_path / "note.md").read_text()
+        assert 'status: "done"' in content
+
+
 class TestDatabase:
     @pytest.mark.skipif(
         not (EXAMPLES / "_mdql.md").exists(),
