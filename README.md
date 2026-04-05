@@ -135,7 +135,64 @@ Trading strategy research database.
 
 The markdown body in both cases is documentation — ignored by the engine, valuable for humans and LLMs.
 
+## Python API
+
+```python
+from mdql import Database, Table
+
+# Open a database
+db = Database("examples/")
+
+# Create a new strategy
+db.table("strategies").insert({
+    "title": "My New Strategy",
+    "status": "HYPOTHESIS",
+    "mechanism": 5,
+    "implementation": 4,
+    "safety": 7,
+    "frequency": 3,
+    "composite": 420,
+    "categories": ["exchange-structure"],
+    "pipeline_stage": "Pre-backtest (step 2 of 9)",
+})
+# → examples/strategies/my-new-strategy.md
+#   created/modified timestamps set automatically
+#   required sections scaffolded
+#   file validated against schema before writing
+
+# Work with a single table directly
+table = Table("examples/strategies/")
+rows, errors = table.load()
+validation_errors = table.validate()
+```
+
+The filename is derived from `title` (slugified). Override with `filename=`:
+
+```python
+table.insert({"title": "My Strategy"}, filename="custom-name")
+```
+
 ## Commands
+
+### `mdql create <folder> --set key=value`
+
+Create a new row file. Field types are coerced from the schema (e.g. `--set mechanism=5` becomes int).
+
+```bash
+uv run mdql create examples/strategies/ \
+  -s 'title=My New Strategy' \
+  -s 'status=HYPOTHESIS' \
+  -s 'mechanism=5' \
+  -s 'implementation=4' \
+  -s 'safety=7' \
+  -s 'frequency=3' \
+  -s 'composite=420' \
+  -s 'categories=exchange-structure' \
+  -s 'pipeline_stage=Pre-backtest (step 2 of 9)'
+# Created my-new-strategy.md
+```
+
+For `string[]` fields, use comma-separated values: `-s 'categories=funding-rates,defi'`
 
 ### `mdql validate <folder>`
 
@@ -283,7 +340,7 @@ Validation errors are handled via the `errors` parameter: `"warn"` (default), `"
 uv run pytest
 ```
 
-122 tests covering parser, validator, query engine, CLI, timestamps, pandas integration, and integration with real data.
+143 tests covering parser, validator, query engine, CLI, API, timestamps, pandas integration, and integration with real data.
 
 ## Project structure
 
@@ -300,6 +357,7 @@ src/mdql/
   projector.py      # format output (table/json/csv)
   pandas.py         # optional pandas integration (load_dataframe, to_dataframe)
   stamp.py          # auto-manage created/modified timestamps
+  api.py            # object-oriented API (Table, Database, insert)
   cli.py            # typer CLI
 ```
 

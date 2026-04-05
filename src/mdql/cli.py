@@ -164,6 +164,53 @@ def _print_table_schema(s) -> None:
 
 
 @app.command()
+def create(
+    folder: Path = typer.Argument(..., help="Path to table folder"),
+    set_fields: list[str] = typer.Option(
+        ..., "--set", "-s", help="Field value as key=value (repeatable)"
+    ),
+    filename: Optional[str] = typer.Option(None, "--filename", help="Override auto-generated filename"),
+) -> None:
+    """Create a new row file in a table."""
+    from mdql.api import Table, _coerce_value
+
+    try:
+        table = Table(folder)
+    except MdqlError as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1)
+
+    # Parse --set key=value pairs
+    data: dict = {}
+    for pair in set_fields:
+        if "=" not in pair:
+            typer.echo(f"Error: invalid --set format '{pair}' (expected key=value)", err=True)
+            raise typer.Exit(1)
+        key, _, raw_value = pair.partition("=")
+        key = key.strip()
+        raw_value = raw_value.strip()
+
+        # Coerce type from schema
+        field_def = table.schema.frontmatter.get(key)
+        if field_def:
+            try:
+                data[key] = _coerce_value(raw_value, field_def.type)
+            except (ValueError, TypeError) as e:
+                typer.echo(f"Error: cannot parse '{key}={raw_value}' as {field_def.type}: {e}", err=True)
+                raise typer.Exit(1)
+        else:
+            data[key] = raw_value
+
+    try:
+        filepath = table.insert(data, filename=filename)
+    except MdqlError as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1)
+
+    typer.echo(f"Created {filepath.relative_to(folder)}")
+
+
+@app.command()
 def stamp(
     folder: Path = typer.Argument(..., help="Path to table folder"),
 ) -> None:
