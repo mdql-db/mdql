@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::io::{self, BufRead, Write};
+
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
@@ -482,7 +482,181 @@ fn cmd_stamp(folder: &std::path::Path) -> Result<(), MdqlError> {
     Ok(())
 }
 
+// --- REPL autocomplete helper ---
+
+use rustyline::hint::HistoryHinter;
+
+struct MdqlHelper {
+    completer: MdqlCompleter,
+    hinter: HistoryHinter,
+}
+
+impl rustyline::completion::Completer for MdqlHelper {
+    type Candidate = String;
+
+    fn complete(
+        &self,
+        line: &str,
+        pos: usize,
+        ctx: &rustyline::Context<'_>,
+    ) -> rustyline::Result<(usize, Vec<String>)> {
+        self.completer.complete(line, pos, ctx)
+    }
+}
+
+impl rustyline::hint::Hinter for MdqlHelper {
+    type Hint = String;
+
+    fn hint(&self, line: &str, pos: usize, ctx: &rustyline::Context<'_>) -> Option<String> {
+        self.hinter.hint(line, pos, ctx)
+    }
+}
+
+impl rustyline::highlight::Highlighter for MdqlHelper {}
+impl rustyline::validate::Validator for MdqlHelper {}
+impl rustyline::Helper for MdqlHelper {}
+
+#[derive(Clone)]
+struct MdqlCompleter {
+    keywords: Vec<String>,
+    table_names: Vec<String>,
+    column_names: Vec<String>,
+    commands: Vec<String>,
+}
+
+impl MdqlCompleter {
+    fn new(table_names: Vec<String>, column_names: Vec<String>) -> Self {
+        let keywords = [
+            "SELECT", "FROM", "WHERE", "ORDER BY", "ASC", "DESC", "LIMIT",
+            "AND", "OR", "IN", "LIKE", "IS NULL", "IS NOT NULL",
+            "INSERT INTO", "VALUES", "UPDATE", "SET", "DELETE FROM",
+            "ALTER TABLE", "RENAME FIELD", "DROP FIELD", "MERGE FIELDS", "INTO",
+            "JOIN", "ON", "GROUP BY", "HAVING", "DISTINCT",
+            "COUNT", "SUM", "AVG", "MIN", "MAX",
+            "AS", "*",
+        ].iter().map(|s| s.to_string()).collect();
+        let commands = vec![
+            "\\d".to_string(), "\\q".to_string(), "\\?".to_string(),
+            "quit".to_string(), "exit".to_string(), "help".to_string(),
+        ];
+        Self { keywords, table_names, column_names, commands }
+    }
+}
+
+impl rustyline::completion::Completer for MdqlCompleter {
+    type Candidate = String;
+
+    fn complete(
+        &self,
+        line: &str,
+        pos: usize,
+        _ctx: &rustyline::Context<'_>,
+    ) -> rustyline::Result<(usize, Vec<String>)> {
+        let line_to_pos = &line[..pos];
+
+        // Find the start of the current word (. breaks for alias prefixes like c.column)
+        let start = line_to_pos.rfind(|c: char| c.is_whitespace() || c == ',' || c == '.')
+            .map(|i| i + 1)
+            .unwrap_or(0);
+        let partial = &line_to_pos[start..];
+
+        if partial.is_empty() {
+            return Ok((start, vec![]));
+        }
+
+        let partial_upper = partial.to_uppercase();
+        let partial_lower = partial.to_lowercase();
+
+        let mut candidates: Vec<String> = Vec::new();
+
+        // Commands (at start of line)
+        if start == 0 {
+            for cmd in &self.commands {
+                if cmd.starts_with(partial) || cmd.starts_with(&partial_lower) {
+                    candidates.push(cmd.clone());
+                }
+            }
+        }
+
+        // SQL keywords (match uppercase)
+        for kw in &self.keywords {
+            if kw.starts_with(&partial_upper) {
+                candidates.push(kw.clone());
+            }
+        }
+
+        // Table names (case-insensitive)
+        for t in &self.table_names {
+            if t.to_lowercase().starts_with(&partial_lower) {
+                candidates.push(t.clone());
+            }
+        }
+
+        // Column names (case-insensitive)
+        for c in &self.column_names {
+            if c.to_lowercase().starts_with(&partial_lower) {
+                if c.contains(' ') {
+                    candidates.push(format!("`{}`", c));
+                } else {
+                    candidates.push(c.clone());
+                }
+            }
+        }
+
+        candidates.sort();
+        candidates.dedup();
+        Ok((start, candidates))
+    }
+}
+
+fn collect_schema_info(db_path: &std::path::Path, is_db: bool) -> (Vec<String>, Vec<String>) {
+    let mut table_names = Vec::new();
+    let mut column_names = vec!["path".to_string(), "h1".to_string(), "created".to_string(), "modified".to_string()];
+
+    if is_db {
+        if let Ok(entries) = std::fs::read_dir(db_path) {
+            let mut dirs: Vec<_> = entries
+                .filter_map(|e| e.ok())
+                .map(|e| e.path())
+                .filter(|p| p.is_dir() && p.join(MDQL_FILENAME).exists())
+                .collect();
+            dirs.sort();
+            for td in dirs {
+                if let Ok(s) = load_schema(&td) {
+                    table_names.push(s.table.clone());
+                    for name in s.frontmatter.keys() {
+                        if !column_names.contains(name) {
+                            column_names.push(name.clone());
+                        }
+                    }
+                    for name in s.sections.keys() {
+                        if !column_names.contains(name) {
+                            column_names.push(name.clone());
+                        }
+                    }
+                }
+            }
+        }
+    } else if let Ok(s) = load_schema(db_path) {
+        table_names.push(s.table.clone());
+        for name in s.frontmatter.keys() {
+            if !column_names.contains(name) {
+                column_names.push(name.clone());
+            }
+        }
+        for name in s.sections.keys() {
+            if !column_names.contains(name) {
+                column_names.push(name.clone());
+            }
+        }
+    }
+
+    (table_names, column_names)
+}
+
 fn cmd_repl(db_path: &std::path::Path) -> Result<(), MdqlError> {
+    use rustyline::error::ReadlineError;
+
     let is_db = is_database_dir(db_path);
 
     if is_db {
@@ -493,56 +667,71 @@ fn cmd_repl(db_path: &std::path::Path) -> Result<(), MdqlError> {
         println!("Connected to table '{}' at {}", s.table, db_path.display());
     }
 
-    println!("Type SQL queries, or \\q to quit.\n");
+    println!("Type SQL queries, or \\q to quit. Tab to autocomplete.\n");
 
-    let stdin = io::stdin();
-    let stdout = io::stdout();
+    let history_path = dirs_next::data_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("mdql_history.txt");
+
+    let (table_names, column_names) = collect_schema_info(db_path, is_db);
+    let helper = MdqlHelper {
+        completer: MdqlCompleter::new(table_names, column_names),
+        hinter: HistoryHinter::new(),
+    };
+
+    let config = rustyline::Config::builder()
+        .completion_type(rustyline::CompletionType::List)
+        .build();
+
+    let mut rl = rustyline::Editor::with_config(config)
+        .map_err(|e| MdqlError::General(e.to_string()))?;
+    rl.set_helper(Some(helper));
+    let _ = rl.load_history(&history_path);
 
     loop {
-        print!("mdql> ");
-        stdout.lock().flush().ok();
+        match rl.readline("mdql> ") {
+            Ok(line) => {
+                let sql = line.trim();
+                if sql.is_empty() {
+                    continue;
+                }
+                rl.add_history_entry(sql).ok();
 
-        let mut line = String::new();
-        match stdin.lock().read_line(&mut line) {
-            Ok(0) => {
+                if sql == "\\q" || sql == "quit" || sql == "exit" {
+                    break;
+                }
+                if sql == "\\d" {
+                    describe_all(db_path, is_db);
+                    continue;
+                }
+                if sql.starts_with("\\d ") {
+                    describe_table(db_path, sql[3..].trim(), is_db);
+                    continue;
+                }
+                if sql == "\\?" || sql == "help" {
+                    println!("  \\d          list tables (or show fields if single table)");
+                    println!("  \\d <table>  describe a table's fields");
+                    println!("  \\q          quit");
+                    continue;
+                }
+
+                match exec_repl_query(db_path, sql, is_db) {
+                    Ok(()) => {}
+                    Err(e) => eprintln!("Error: {}", e),
+                }
+            }
+            Err(ReadlineError::Interrupted | ReadlineError::Eof) => {
                 println!();
                 break;
             }
-            Err(_) => {
-                println!();
+            Err(e) => {
+                eprintln!("Error: {}", e);
                 break;
             }
-            _ => {}
-        }
-
-        let sql = line.trim();
-        if sql.is_empty() {
-            continue;
-        }
-        if sql == "\\q" || sql == "quit" || sql == "exit" {
-            break;
-        }
-        if sql == "\\d" {
-            describe_all(db_path, is_db);
-            continue;
-        }
-        if sql.starts_with("\\d ") {
-            describe_table(db_path, sql[3..].trim(), is_db);
-            continue;
-        }
-        if sql == "\\?" || sql == "help" {
-            println!("  \\d          list tables (or show fields if single table)");
-            println!("  \\d <table>  describe a table's fields");
-            println!("  \\q          quit");
-            continue;
-        }
-
-        match exec_repl_query(db_path, sql, is_db) {
-            Ok(()) => {}
-            Err(e) => eprintln!("Error: {}", e),
         }
     }
 
+    let _ = rl.save_history(&history_path);
     Ok(())
 }
 
