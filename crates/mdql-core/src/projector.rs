@@ -161,8 +161,9 @@ fn format_table(rows: &[Row], columns: &[String], truncate: usize) -> String {
 fn truncate_str(s: &str, max_len: usize) -> String {
     let s = s.replace('\n', " ");
     let s = s.trim();
-    if s.len() > max_len {
-        format!("{}...", &s[..max_len - 3])
+    if s.chars().count() > max_len {
+        let truncated: String = s.chars().take(max_len - 3).collect();
+        format!("{}...", truncated)
     } else {
         s.to_string()
     }
