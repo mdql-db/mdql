@@ -133,10 +133,10 @@ fn format_table(rows: &[Row], columns: &[String], truncate: usize) -> String {
     } else {
         // Auto-fit to terminal width
         let term_width = terminal_width().unwrap_or(120);
-        fit_columns_to_width(&natural_widths, term_width.saturating_sub(total_gap), ncols)
+        fit_columns_to_width(&natural_widths, term_width.saturating_sub(total_gap))
     };
 
-    // Second pass: truncate cells to effective widths
+    // Second pass: truncate cells AND headers to effective widths
     let cell_data: Vec<Vec<String>> = raw_cells
         .iter()
         .map(|row_cells| {
@@ -148,8 +148,14 @@ fn format_table(rows: &[Row], columns: &[String], truncate: usize) -> String {
         })
         .collect();
 
-    // Recalculate display widths after truncation
-    let mut display_widths: Vec<usize> = columns.iter().map(|c| c.chars().count()).collect();
+    let truncated_headers: Vec<String> = columns
+        .iter()
+        .enumerate()
+        .map(|(i, c)| truncate_str(c, effective_widths[i]))
+        .collect();
+
+    // Display widths = max of (truncated header, truncated cells) — guaranteed <= effective_widths
+    let mut display_widths: Vec<usize> = truncated_headers.iter().map(|h| h.chars().count()).collect();
     for row_cells in &cell_data {
         for (i, s) in row_cells.iter().enumerate() {
             let w = s.chars().count();
@@ -162,10 +168,10 @@ fn format_table(rows: &[Row], columns: &[String], truncate: usize) -> String {
     let mut out = String::new();
 
     // Header
-    let header: Vec<String> = columns
+    let header: Vec<String> = truncated_headers
         .iter()
         .enumerate()
-        .map(|(i, c)| format!("{:<width$}", c, width = display_widths[i]))
+        .map(|(i, h)| format!("{:<width$}", h, width = display_widths[i]))
         .collect();
     out.push_str(&header.join("  "));
     out.push('\n');
@@ -217,47 +223,35 @@ fn terminal_width() -> Option<usize> {
 }
 
 /// Distribute available width across columns to fit within budget.
-/// Each column gets at least its header width (min 4 chars).
-/// Remaining space goes to columns proportional to their content width.
-fn fit_columns_to_width(natural: &[usize], available: usize, _ncols: usize) -> Vec<usize> {
+fn fit_columns_to_width(natural: &[usize], available: usize) -> Vec<usize> {
     let total_natural: usize = natural.iter().sum();
     if total_natural <= available {
         return natural.to_vec();
     }
 
+    // Simple proportional: each column gets (natural / total_natural) * available
+    // Floor at 4 chars minimum
     let min_col = 4;
-
-    // Give each column its minimum (header width, already in natural, but floor at min_col)
-    let mut widths: Vec<usize> = natural.iter().map(|&w| w.min(min_col).max(min_col)).collect();
-    let min_total: usize = widths.iter().sum();
-
-    if min_total >= available {
-        // Even minimums don't fit — just use minimums
-        return widths;
-    }
-
-    // Distribute remaining space proportionally to columns that want more
-    let remaining = available - min_total;
-    let wants: Vec<usize> = natural.iter().zip(widths.iter())
-        .map(|(&nat, &cur)| nat.saturating_sub(cur))
+    let mut widths: Vec<usize> = natural
+        .iter()
+        .map(|&w| {
+            let share = ((w as f64 / total_natural as f64) * available as f64) as usize;
+            share.max(min_col)
+        })
         .collect();
-    let total_want: usize = wants.iter().sum();
 
-    if total_want > 0 {
-        let mut given = 0usize;
-        for (i, &want) in wants.iter().enumerate() {
-            if want > 0 {
-                let share = ((want as f64 / total_want as f64) * remaining as f64) as usize;
-                widths[i] += share;
-                given += share;
-            }
-        }
-        // Give any leftover pixels to the widest unsatisfied column
-        let leftover = remaining.saturating_sub(given);
-        if leftover > 0 {
-            if let Some(i) = wants.iter().enumerate().max_by_key(|(_, &w)| w).map(|(i, _)| i) {
-                widths[i] += leftover;
-            }
+    // If rounding pushed us over, trim from the widest
+    let mut total: usize = widths.iter().sum();
+    while total > available {
+        if let Some(i) = widths.iter().enumerate()
+            .filter(|(_, &w)| w > min_col)
+            .max_by_key(|(_, &w)| w)
+            .map(|(i, _)| i)
+        {
+            widths[i] -= 1;
+            total -= 1;
+        } else {
+            break;
         }
     }
 
