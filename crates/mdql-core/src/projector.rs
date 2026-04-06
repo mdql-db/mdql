@@ -209,16 +209,30 @@ fn format_table(rows: &[Row], columns: &[String], truncate: usize) -> String {
 
 /// Get terminal width, if available.
 fn terminal_width() -> Option<usize> {
-    #[cfg(unix)]
-    {
-        use std::mem::zeroed;
-        unsafe {
-            let mut ws: libc::winsize = zeroed();
-            if libc::ioctl(1, libc::TIOCGWINSZ, &mut ws) == 0 && ws.ws_col > 0 {
-                return Some(ws.ws_col as usize);
+    // Try COLUMNS env var first (set by many shells)
+    if let Ok(cols) = std::env::var("COLUMNS") {
+        if let Ok(w) = cols.parse::<usize>() {
+            if w > 0 {
+                return Some(w);
             }
         }
     }
+
+    // Try ioctl on stderr (fd 2), then stdout (fd 1), then stdin (fd 0)
+    // stderr is often still connected to the terminal even when stdout is piped
+    #[cfg(unix)]
+    {
+        use std::mem::zeroed;
+        for fd in [2, 1, 0] {
+            unsafe {
+                let mut ws: libc::winsize = zeroed();
+                if libc::ioctl(fd, libc::TIOCGWINSZ, &mut ws) == 0 && ws.ws_col > 0 {
+                    return Some(ws.ws_col as usize);
+                }
+            }
+        }
+    }
+
     None
 }
 

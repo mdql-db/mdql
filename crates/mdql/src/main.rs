@@ -750,11 +750,11 @@ fn exec_repl_query(folder: &std::path::Path, sql: &str, is_db: bool) -> Result<(
                     .get(&q.table)
                     .ok_or_else(|| MdqlError::QueryExecution(format!("table '{}' not found", q.table)))?;
                 let (result_rows, cols) = execute_query(q, rows, schema)?;
-                println!("{}", format_results(&result_rows, Some(&cols), "table", 80));
+                println!("{}", format_results(&result_rows, Some(&cols), "table", 0));
             } else {
                 let (schema, rows, _) = load_table(folder)?;
                 let (result_rows, cols) = execute_query(q, &rows, &schema)?;
-                println!("{}", format_results(&result_rows, Some(&cols), "table", 80));
+                println!("{}", format_results(&result_rows, Some(&cols), "table", 0));
             }
         }
         _ => {
