@@ -484,7 +484,7 @@ impl Table {
             &result_rows,
             Some(&result_columns),
             "table",
-            80,
+            0,
         ))
     }
 

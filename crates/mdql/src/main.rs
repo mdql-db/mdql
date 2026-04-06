@@ -743,7 +743,7 @@ fn exec_repl_query(folder: &std::path::Path, sql: &str, is_db: bool) -> Result<(
             if q.join.is_some() {
                 let (_, tables, _) = mdql_core::loader::load_database(folder)?;
                 let (rows, cols) = execute_join_query(q, &tables)?;
-                println!("{}", format_results(&rows, Some(&cols), "table", 80));
+                println!("{}", format_results(&rows, Some(&cols), "table", 0));
             } else if is_db {
                 let (_, tables, _) = mdql_core::loader::load_database(folder)?;
                 let (schema, rows) = tables

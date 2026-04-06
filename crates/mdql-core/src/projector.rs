@@ -95,10 +95,15 @@ fn csv_value(val: &Value) -> String {
 }
 
 fn format_table(rows: &[Row], columns: &[String], truncate: usize) -> String {
-    // Calculate column widths
-    let mut widths: Vec<usize> = columns.iter().map(|c| c.len()).collect();
+    let ncols = columns.len();
+    if ncols == 0 {
+        return "No results.".to_string();
+    }
 
-    let cell_data: Vec<Vec<String>> = rows
+    // First pass: collect raw (newline-flattened, trimmed) cell strings and natural widths
+    let mut natural_widths: Vec<usize> = columns.iter().map(|c| c.chars().count()).collect();
+
+    let raw_cells: Vec<Vec<String>> = rows
         .iter()
         .map(|r| {
             columns
@@ -106,9 +111,11 @@ fn format_table(rows: &[Row], columns: &[String], truncate: usize) -> String {
                 .enumerate()
                 .map(|(i, c)| {
                     let val = r.get(c).unwrap_or(&Value::Null);
-                    let s = truncate_str(&val.to_display_string(), truncate);
-                    if s.len() > widths[i] {
-                        widths[i] = s.len();
+                    let s = val.to_display_string().replace('\n', " ");
+                    let s = s.trim().to_string();
+                    let char_len = s.chars().count();
+                    if char_len > natural_widths[i] {
+                        natural_widths[i] = char_len;
                     }
                     s
                 })
@@ -116,19 +123,55 @@ fn format_table(rows: &[Row], columns: &[String], truncate: usize) -> String {
         })
         .collect();
 
+    // Determine effective max width per column
+    let gap = 2; // spaces between columns
+    let total_gap = gap * (ncols.saturating_sub(1));
+
+    let effective_widths = if truncate > 0 {
+        // Explicit truncate: cap each column at truncate
+        natural_widths.iter().map(|&w| w.min(truncate)).collect::<Vec<_>>()
+    } else {
+        // Auto-fit to terminal width
+        let term_width = terminal_width().unwrap_or(120);
+        fit_columns_to_width(&natural_widths, term_width.saturating_sub(total_gap), ncols)
+    };
+
+    // Second pass: truncate cells to effective widths
+    let cell_data: Vec<Vec<String>> = raw_cells
+        .iter()
+        .map(|row_cells| {
+            row_cells
+                .iter()
+                .enumerate()
+                .map(|(i, s)| truncate_str(s, effective_widths[i]))
+                .collect()
+        })
+        .collect();
+
+    // Recalculate display widths after truncation
+    let mut display_widths: Vec<usize> = columns.iter().map(|c| c.chars().count()).collect();
+    for row_cells in &cell_data {
+        for (i, s) in row_cells.iter().enumerate() {
+            let w = s.chars().count();
+            if w > display_widths[i] {
+                display_widths[i] = w;
+            }
+        }
+    }
+
     let mut out = String::new();
 
     // Header
     let header: Vec<String> = columns
         .iter()
         .enumerate()
-        .map(|(i, c)| format!("{:<width$}", c, width = widths[i]))
+        .map(|(i, c)| format!("{:<width$}", c, width = display_widths[i]))
         .collect();
     out.push_str(&header.join("  "));
     out.push('\n');
 
     // Separator
-    let sep: Vec<String> = widths.iter().map(|w| "-".repeat(*w)).collect();
+    let sep: Vec<String> = display_widths.iter().map(|w| "-".repeat(*w)).collect();
     out.push_str(&sep.join("  "));
     out.push('\n');
 
@@ -144,9 +187,9 @@ fn format_table(rows: &[Row], columns: &[String], truncate: usize) -> String {
                     .and_then(|r| r.get(&columns[i]))
                     .map_or(false, |v| matches!(v, Value::Int(_) | Value::Float(_)))
                 {
-                    format!("{:>width$}", c, width = widths[i])
+                    format!("{:>width$}", c, width = display_widths[i])
                 } else {
-                    format!("{:<width$}", c, width = widths[i])
+                    format!("{:<width$}", c, width = display_widths[i])
                 }
             })
             .collect();
@@ -156,6 +199,77 @@ fn format_table(rows: &[Row], columns: &[String], truncate: usize) -> String {
 
     // Remove trailing newline to match Python tabulate behavior
     out.trim_end_matches('\n').to_string()
+}
+
+/// Get terminal width, if available.
+fn terminal_width() -> Option<usize> {
+    // Use ioctl TIOCGWINSZ
+    #[cfg(unix)]
+    {
+        use std::mem::zeroed;
+        unsafe {
+            let mut ws: libc::winsize = zeroed();
+            if libc::ioctl(1, libc::TIOCGWINSZ, &mut ws) == 0 && ws.ws_col > 0 {
+                return Some(ws.ws_col as usize);
+            }
+        }
+    }
+    None
+}
+
+/// Distribute available width across columns, shrinking wide columns proportionally.
+fn fit_columns_to_width(natural: &[usize], available: usize, ncols: usize) -> Vec<usize> {
+    let total_natural: usize = natural.iter().sum();
+    if total_natural <= available {
+        return natural.to_vec();
+    }
+
+    // Minimum column width
+    let min_col = 6;
+    let mut widths = natural.to_vec();
+
+    // Iteratively shrink the widest columns until we fit
+    loop {
+        let total: usize = widths.iter().sum();
+        if total <= available {
+            break;
+        }
+
+        // Find the widest column
+        let max_w = *widths.iter().max().unwrap_or(&0);
+        if max_w <= min_col {
+            break; // Can't shrink further
+        }
+
+        // Target: second-widest + 1 (or the fair share, whichever is larger)
+        let mut sorted = widths.clone();
+        sorted.sort_unstable();
+        sorted.dedup();
+        let target = if sorted.len() >= 2 {
+            sorted[sorted.len() - 2].max(min_col)
+        } else {
+            (available / ncols).max(min_col)
+        };
+
+        // Shrink all columns at max_w down to target
+        for w in &mut widths {
+            if *w == max_w {
+                *w = target;
+            }
+        }
+    }
+
+    // Final proportional adjustment if still over budget
+    let total: usize = widths.iter().sum();
+    if total > available {
+        let ratio = available as f64 / total as f64;
+        widths = widths
+            .iter()
+            .map(|&w| ((w as f64 * ratio) as usize).max(min_col))
+            .collect();
+    }
+
+    widths
 }
 
 fn truncate_str(s: &str, max_len: usize) -> String {
