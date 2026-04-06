@@ -203,7 +203,6 @@ fn format_table(rows: &[Row], columns: &[String], truncate: usize) -> String {
 
 /// Get terminal width, if available.
 fn terminal_width() -> Option<usize> {
-    // Use ioctl TIOCGWINSZ
     #[cfg(unix)]
     {
         use std::mem::zeroed;
@@ -217,56 +216,49 @@ fn terminal_width() -> Option<usize> {
     None
 }
 
-/// Distribute available width across columns, shrinking wide columns proportionally.
-fn fit_columns_to_width(natural: &[usize], available: usize, ncols: usize) -> Vec<usize> {
+/// Distribute available width across columns to fit within budget.
+/// Each column gets at least its header width (min 4 chars).
+/// Remaining space goes to columns proportional to their content width.
+fn fit_columns_to_width(natural: &[usize], available: usize, _ncols: usize) -> Vec<usize> {
     let total_natural: usize = natural.iter().sum();
     if total_natural <= available {
         return natural.to_vec();
     }
 
-    // Minimum column width
-    let min_col = 6;
-    let mut widths = natural.to_vec();
+    let min_col = 4;
 
-    // Iteratively shrink the widest columns until we fit
-    loop {
-        let total: usize = widths.iter().sum();
-        if total <= available {
-            break;
-        }
+    // Give each column its minimum (header width, already in natural, but floor at min_col)
+    let mut widths: Vec<usize> = natural.iter().map(|&w| w.min(min_col).max(min_col)).collect();
+    let min_total: usize = widths.iter().sum();
 
-        // Find the widest column
-        let max_w = *widths.iter().max().unwrap_or(&0);
-        if max_w <= min_col {
-            break; // Can't shrink further
-        }
-
-        // Target: second-widest + 1 (or the fair share, whichever is larger)
-        let mut sorted = widths.clone();
-        sorted.sort_unstable();
-        sorted.dedup();
-        let target = if sorted.len() >= 2 {
-            sorted[sorted.len() - 2].max(min_col)
-        } else {
-            (available / ncols).max(min_col)
-        };
-
-        // Shrink all columns at max_w down to target
-        for w in &mut widths {
-            if *w == max_w {
-                *w = target;
-            }
-        }
+    if min_total >= available {
+        // Even minimums don't fit — just use minimums
+        return widths;
     }
 
-    // Final proportional adjustment if still over budget
-    let total: usize = widths.iter().sum();
-    if total > available {
-        let ratio = available as f64 / total as f64;
-        widths = widths
-            .iter()
-            .map(|&w| ((w as f64 * ratio) as usize).max(min_col))
-            .collect();
+    // Distribute remaining space proportionally to columns that want more
+    let remaining = available - min_total;
+    let wants: Vec<usize> = natural.iter().zip(widths.iter())
+        .map(|(&nat, &cur)| nat.saturating_sub(cur))
+        .collect();
+    let total_want: usize = wants.iter().sum();
+
+    if total_want > 0 {
+        let mut given = 0usize;
+        for (i, &want) in wants.iter().enumerate() {
+            if want > 0 {
+                let share = ((want as f64 / total_want as f64) * remaining as f64) as usize;
+                widths[i] += share;
+                given += share;
+            }
+        }
+        // Give any leftover pixels to the widest unsatisfied column
+        let leftover = remaining.saturating_sub(given);
+        if leftover > 0 {
+            if let Some(i) = wants.iter().enumerate().max_by_key(|(_, &w)| w).map(|(i, _)| i) {
+                widths[i] += leftover;
+            }
+        }
     }
 
     widths
