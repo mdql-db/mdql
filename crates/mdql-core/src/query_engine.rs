@@ -15,7 +15,152 @@ pub fn execute_query(
     rows: &[Row],
     _schema: &Schema,
 ) -> crate::errors::Result<(Vec<Row>, Vec<String>)> {
-    execute(query, rows)
+    execute(query, rows, None)
+}
+
+/// Execute a query with optional B-tree index and FTS searcher.
+pub fn execute_query_indexed(
+    query: &SelectQuery,
+    rows: &[Row],
+    schema: &Schema,
+    index: Option<&crate::index::TableIndex>,
+    searcher: Option<&crate::search::TableSearcher>,
+) -> crate::errors::Result<(Vec<Row>, Vec<String>)> {
+    // Pre-compute FTS results for any LIKE clauses on section columns
+    let fts_results = if let (Some(ref wc), Some(searcher)) = (&query.where_clause, searcher) {
+        collect_fts_results(wc, schema, searcher)
+    } else {
+        HashMap::new()
+    };
+
+    execute_with_fts(query, rows, index, &fts_results)
+}
+
+/// Collect FTS results for LIKE comparisons on section columns.
+/// Returns a map from (column, pattern) → set of matching paths.
+fn collect_fts_results(
+    clause: &WhereClause,
+    schema: &Schema,
+    searcher: &crate::search::TableSearcher,
+) -> HashMap<(String, String), std::collections::HashSet<String>> {
+    let mut results = HashMap::new();
+    collect_fts_results_inner(clause, schema, searcher, &mut results);
+    results
+}
+
+fn collect_fts_results_inner(
+    clause: &WhereClause,
+    schema: &Schema,
+    searcher: &crate::search::TableSearcher,
+    results: &mut HashMap<(String, String), std::collections::HashSet<String>>,
+) {
+    match clause {
+        WhereClause::Comparison(cmp) => {
+            if (cmp.op == "LIKE" || cmp.op == "NOT LIKE") && schema.sections.contains_key(&cmp.column) {
+                if let Some(SqlValue::String(pattern)) = &cmp.value {
+                    // Strip SQL wildcards for Tantivy query
+                    let search_term = pattern.replace('%', " ").replace('_', " ").trim().to_string();
+                    if !search_term.is_empty() {
+                        if let Ok(paths) = searcher.search(&search_term, Some(&cmp.column)) {
+                            let key = (cmp.column.clone(), pattern.clone());
+                            results.insert(key, paths.into_iter().collect());
+                        }
+                    }
+                }
+            }
+        }
+        WhereClause::BoolOp(bop) => {
+            collect_fts_results_inner(&bop.left, schema, searcher, results);
+            collect_fts_results_inner(&bop.right, schema, searcher, results);
+        }
+    }
+}
+
+type FtsResults = HashMap<(String, String), std::collections::HashSet<String>>;
+
+fn execute_with_fts(
+    query: &SelectQuery,
+    rows: &[Row],
+    index: Option<&crate::index::TableIndex>,
+    fts: &FtsResults,
+) -> crate::errors::Result<(Vec<Row>, Vec<String>)> {
+    // Determine available columns
+    let mut all_columns: Vec<String> = Vec::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for r in rows {
+        for k in r.keys() {
+            if seen.insert(k.clone()) {
+                all_columns.push(k.clone());
+            }
+        }
+    }
+
+    let columns = match &query.columns {
+        ColumnList::All => all_columns,
+        ColumnList::Named(cols) => cols.clone(),
+    };
+
+    // Filter — try index first, fall back to full scan
+    let mut result: Vec<Row> = if let Some(ref wc) = query.where_clause {
+        let candidate_paths = index.and_then(|idx| try_index_filter(wc, idx));
+        if let Some(paths) = candidate_paths {
+            rows.iter()
+                .filter(|r| {
+                    r.get("path")
+                        .and_then(|v| v.as_str())
+                        .map_or(false, |p| paths.contains(p))
+                })
+                .filter(|r| evaluate_with_fts(wc, r, fts))
+                .cloned()
+                .collect()
+        } else {
+            rows.iter()
+                .filter(|r| evaluate_with_fts(wc, r, fts))
+                .cloned()
+                .collect()
+        }
+    } else {
+        rows.to_vec()
+    };
+
+    // Sort
+    if let Some(ref order_by) = query.order_by {
+        sort_rows(&mut result, order_by);
+    }
+
+    // Limit
+    if let Some(limit) = query.limit {
+        result.truncate(limit as usize);
+    }
+
+    Ok((result, columns))
+}
+
+fn evaluate_with_fts(clause: &WhereClause, row: &Row, fts: &FtsResults) -> bool {
+    match clause {
+        WhereClause::BoolOp(bop) => {
+            let left = evaluate_with_fts(&bop.left, row, fts);
+            match bop.op.as_str() {
+                "AND" => left && evaluate_with_fts(&bop.right, row, fts),
+                "OR" => left || evaluate_with_fts(&bop.right, row, fts),
+                _ => false,
+            }
+        }
+        WhereClause::Comparison(cmp) => {
+            // Check if we have FTS results for this comparison
+            if cmp.op == "LIKE" || cmp.op == "NOT LIKE" {
+                if let Some(SqlValue::String(pattern)) = &cmp.value {
+                    let key = (cmp.column.clone(), pattern.clone());
+                    if let Some(matching_paths) = fts.get(&key) {
+                        let row_path = row.get("path").and_then(|v| v.as_str()).unwrap_or("");
+                        let matched = matching_paths.contains(row_path);
+                        return if cmp.op == "LIKE" { matched } else { !matched };
+                    }
+                }
+            }
+            evaluate_comparison(cmp, row)
+        }
+    }
 }
 
 pub fn execute_join_query(
@@ -89,7 +234,7 @@ pub fn execute_join_query(
         }
     }
 
-    execute(query, &joined_rows)
+    execute(query, &joined_rows, None)
 }
 
 fn resolve_dotted(col: &str, aliases: &HashMap<String, String>) -> (String, String) {
@@ -104,45 +249,10 @@ fn resolve_dotted(col: &str, aliases: &HashMap<String, String>) -> (String, Stri
 fn execute(
     query: &SelectQuery,
     rows: &[Row],
+    index: Option<&crate::index::TableIndex>,
 ) -> crate::errors::Result<(Vec<Row>, Vec<String>)> {
-    // Determine available columns
-    let mut all_columns: Vec<String> = Vec::new();
-    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
-    for r in rows {
-        for k in r.keys() {
-            if seen.insert(k.clone()) {
-                all_columns.push(k.clone());
-            }
-        }
-    }
-
-    // Resolve column list
-    let columns = match &query.columns {
-        ColumnList::All => all_columns,
-        ColumnList::Named(cols) => cols.clone(),
-    };
-
-    // Filter
-    let mut result: Vec<Row> = if let Some(ref wc) = query.where_clause {
-        rows.iter()
-            .filter(|r| evaluate(wc, r))
-            .cloned()
-            .collect()
-    } else {
-        rows.to_vec()
-    };
-
-    // Sort
-    if let Some(ref order_by) = query.order_by {
-        sort_rows(&mut result, order_by);
-    }
-
-    // Limit
-    if let Some(limit) = query.limit {
-        result.truncate(limit as usize);
-    }
-
-    Ok((result, columns))
+    let empty_fts = HashMap::new();
+    execute_with_fts(query, rows, index, &empty_fts)
 }
 
 pub fn evaluate(clause: &WhereClause, row: &Row) -> bool {
@@ -276,6 +386,101 @@ fn compare_values(actual: &Value, expected: &SqlValue) -> Option<Ordering> {
     actual.partial_cmp(&coerced).map(|o| o)
 }
 
+/// Convert a SqlValue to a Value for index lookups (without a target type for coercion).
+fn sql_value_to_index_value(sv: &SqlValue) -> Value {
+    match sv {
+        SqlValue::String(s) => {
+            // Try date
+            if let Ok(d) = chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d") {
+                return Value::Date(d);
+            }
+            Value::String(s.clone())
+        }
+        SqlValue::Int(n) => Value::Int(*n),
+        SqlValue::Float(f) => Value::Float(*f),
+        SqlValue::Null => Value::Null,
+        SqlValue::List(_) => Value::Null,
+    }
+}
+
+/// Try to use B-tree indexes to narrow the candidate row set.
+/// Returns Some(paths) if the entire WHERE clause could be resolved via index,
+/// or None if a full scan is needed.
+fn try_index_filter(
+    clause: &WhereClause,
+    index: &crate::index::TableIndex,
+) -> Option<std::collections::HashSet<String>> {
+    match clause {
+        WhereClause::Comparison(cmp) => {
+            if !index.has_index(&cmp.column) {
+                return None;
+            }
+            match cmp.op.as_str() {
+                "=" => {
+                    let val = sql_value_to_index_value(cmp.value.as_ref()?);
+                    let paths = index.lookup_eq(&cmp.column, &val);
+                    Some(paths.into_iter().map(|s| s.to_string()).collect())
+                }
+                "<" => {
+                    let val = sql_value_to_index_value(cmp.value.as_ref()?);
+                    // exclusive upper bound: use range with max < val
+                    // lookup_range is inclusive, so we get all <= val then remove exact matches
+                    let range_paths = index.lookup_range(&cmp.column, None, Some(&val));
+                    let eq_paths: std::collections::HashSet<&str> = index.lookup_eq(&cmp.column, &val).into_iter().collect();
+                    Some(range_paths.into_iter().filter(|p| !eq_paths.contains(p)).map(|s| s.to_string()).collect())
+                }
+                ">" => {
+                    let val = sql_value_to_index_value(cmp.value.as_ref()?);
+                    let range_paths = index.lookup_range(&cmp.column, Some(&val), None);
+                    let eq_paths: std::collections::HashSet<&str> = index.lookup_eq(&cmp.column, &val).into_iter().collect();
+                    Some(range_paths.into_iter().filter(|p| !eq_paths.contains(p)).map(|s| s.to_string()).collect())
+                }
+                "<=" => {
+                    let val = sql_value_to_index_value(cmp.value.as_ref()?);
+                    let paths = index.lookup_range(&cmp.column, None, Some(&val));
+                    Some(paths.into_iter().map(|s| s.to_string()).collect())
+                }
+                ">=" => {
+                    let val = sql_value_to_index_value(cmp.value.as_ref()?);
+                    let paths = index.lookup_range(&cmp.column, Some(&val), None);
+                    Some(paths.into_iter().map(|s| s.to_string()).collect())
+                }
+                "IN" => {
+                    if let Some(SqlValue::List(items)) = &cmp.value {
+                        let vals: Vec<Value> = items.iter().map(sql_value_to_index_value).collect();
+                        let paths = index.lookup_in(&cmp.column, &vals);
+                        Some(paths.into_iter().map(|s| s.to_string()).collect())
+                    } else {
+                        None
+                    }
+                }
+                _ => None, // LIKE, IS NULL, etc. can't use index
+            }
+        }
+        WhereClause::BoolOp(bop) => {
+            let left = try_index_filter(&bop.left, index);
+            let right = try_index_filter(&bop.right, index);
+            match bop.op.as_str() {
+                "AND" => {
+                    match (left, right) {
+                        (Some(l), Some(r)) => Some(l.intersection(&r).cloned().collect()),
+                        (Some(l), None) => Some(l), // narrow with left, scan-verify right
+                        (None, Some(r)) => Some(r),
+                        (None, None) => None,
+                    }
+                }
+                "OR" => {
+                    match (left, right) {
+                        (Some(l), Some(r)) => Some(l.union(&r).cloned().collect()),
+                        _ => None, // Can't use index if either side needs full scan
+                    }
+                }
+                _ => None,
+            }
+        }
+    }
+}
+
 fn sort_rows(rows: &mut Vec<Row>, specs: &[OrderSpec]) {
     rows.sort_by(|a, b| {
         for spec in specs {
@@ -361,7 +566,7 @@ mod tests {
             order_by: None,
             limit: None,
         };
-        let (rows, _cols) = execute(&q, &make_rows()).unwrap();
+        let (rows, _cols) = execute(&q, &make_rows(), None).unwrap();
         assert_eq!(rows.len(), 3);
     }
 
@@ -380,7 +585,7 @@ mod tests {
             order_by: None,
             limit: None,
         };
-        let (rows, _) = execute(&q, &make_rows()).unwrap();
+        let (rows, _) = execute(&q, &make_rows(), None).unwrap();
         assert_eq!(rows.len(), 2);
     }
 
@@ -398,7 +603,7 @@ mod tests {
             }]),
             limit: None,
         };
-        let (rows, _) = execute(&q, &make_rows()).unwrap();
+        let (rows, _) = execute(&q, &make_rows(), None).unwrap();
         assert_eq!(rows[0]["count"], Value::Int(20));
         assert_eq!(rows[2]["count"], Value::Int(5));
     }
@@ -414,7 +619,7 @@ mod tests {
             order_by: None,
             limit: Some(2),
         };
-        let (rows, _) = execute(&q, &make_rows()).unwrap();
+        let (rows, _) = execute(&q, &make_rows(), None).unwrap();
         assert_eq!(rows.len(), 2);
     }
 
@@ -433,7 +638,7 @@ mod tests {
             order_by: None,
             limit: None,
         };
-        let (rows, _) = execute(&q, &make_rows()).unwrap();
+        let (rows, _) = execute(&q, &make_rows(), None).unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0]["title"], Value::String("Alpha".into()));
     }
@@ -456,7 +661,7 @@ mod tests {
             order_by: None,
             limit: None,
         };
-        let (result, _) = execute(&q, &rows).unwrap();
+        let (result, _) = execute(&q, &rows, None).unwrap();
         // All rows where optional is NULL or missing
         assert_eq!(result.len(), 3);
     }

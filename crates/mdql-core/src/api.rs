@@ -8,7 +8,6 @@ use std::sync::LazyLock;
 
 use crate::database::{DatabaseConfig, load_database_config};
 use crate::errors::{MdqlError, ValidationError};
-use crate::loader::load_table as _load_table;
 use crate::migrate;
 use crate::model::{Row, Value};
 use crate::parser::parse_file;
@@ -211,6 +210,7 @@ pub fn coerce_cli_value(raw: &str, field_type: &FieldType) -> crate::errors::Res
 pub struct Table {
     pub path: PathBuf,
     schema: Schema,
+    cache: std::sync::Mutex<crate::cache::TableCache>,
 }
 
 impl Table {
@@ -218,7 +218,11 @@ impl Table {
         let path = path.into();
         recover_journal(&path)?;
         let schema = load_schema(&path)?;
-        Ok(Table { path, schema })
+        Ok(Table {
+            path,
+            schema,
+            cache: std::sync::Mutex::new(crate::cache::TableCache::new()),
+        })
     }
 
     pub fn schema(&self) -> &Schema {
@@ -320,6 +324,7 @@ impl Table {
             )));
         }
 
+        self.cache.lock().unwrap().invalidate_all();
         Ok(filepath)
     }
 
@@ -411,6 +416,7 @@ impl Table {
             )));
         }
 
+        self.cache.lock().unwrap().invalidate_all();
         Ok(filepath)
     }
 
@@ -432,6 +438,7 @@ impl Table {
         }
 
         std::fs::remove_file(&filepath)?;
+        self.cache.lock().unwrap().invalidate_all();
         Ok(filepath)
     }
 
@@ -471,7 +478,7 @@ impl Table {
     }
 
     fn exec_select(&self, query: &SelectQuery) -> crate::errors::Result<String> {
-        let (_, rows, _) = _load_table(&self.path)?;
+        let (_, rows, _) = crate::loader::load_table_cached(&self.path, &mut self.cache.lock().unwrap())?;
         let (result_rows, result_columns) = crate::query_engine::execute_query(query, &rows, &self.schema)?;
         Ok(crate::projector::format_results(
             &result_rows,
@@ -506,7 +513,7 @@ impl Table {
     }
 
     fn exec_update(&self, query: &UpdateQuery) -> crate::errors::Result<String> {
-        let (_, rows, _) = _load_table(&self.path)?;
+        let (_, rows, _) = crate::loader::load_table_cached(&self.path, &mut self.cache.lock().unwrap())?;
 
         let matching: Vec<&Row> = if let Some(ref wc) = query.where_clause {
             rows.iter().filter(|r| evaluate(wc, r)).collect()
@@ -559,7 +566,7 @@ impl Table {
     }
 
     fn exec_delete(&self, query: &DeleteQuery) -> crate::errors::Result<String> {
-        let (_, rows, _) = _load_table(&self.path)?;
+        let (_, rows, _) = crate::loader::load_table_cached(&self.path, &mut self.cache.lock().unwrap())?;
 
         let matching: Vec<&Row> = if let Some(ref wc) = query.where_clause {
             rows.iter().filter(|r| evaluate(wc, r)).collect()
@@ -746,12 +753,18 @@ impl Table {
     }
 
     pub fn load(&self) -> crate::errors::Result<(Vec<Row>, Vec<ValidationError>)> {
-        let (_, rows, errors) = _load_table(&self.path)?;
+        let (_, rows, errors) = crate::loader::load_table_cached(
+            &self.path,
+            &mut self.cache.lock().unwrap(),
+        )?;
         Ok((rows, errors))
     }
 
     pub fn validate(&self) -> crate::errors::Result<Vec<ValidationError>> {
-        let (_, _, errors) = _load_table(&self.path)?;
+        let (_, _, errors) = crate::loader::load_table_cached(
+            &self.path,
+            &mut self.cache.lock().unwrap(),
+        )?;
         Ok(errors)
     }
 }
