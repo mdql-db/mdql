@@ -57,8 +57,8 @@ class Query:
         return self._inner.limit
 
     @property
-    def join(self):
-        return self._inner.join
+    def joins(self):
+        return self._inner.joins
 
 
 def parse_query(sql: str):

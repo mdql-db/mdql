@@ -444,15 +444,34 @@ impl PyTable {
         schema_to_py(py, s)
     }
 
-    fn load(&self, py: Python<'_>) -> PyResult<(PyObject, PyObject)> {
+    /// Load rows from the table. Optionally filter with where={"field": "value"}.
+    #[pyo3(signature = (*, r#where=None))]
+    fn load(
+        &self,
+        py: Python<'_>,
+        r#where: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<(PyObject, PyObject)> {
         let (rows, errors) = self
             .inner
             .load()
             .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
 
+        let filtered = if let Some(where_dict) = r#where {
+            let filter = dict_to_map(where_dict)?;
+            rows.into_iter()
+                .filter(|row| {
+                    filter.iter().all(|(k, v)| {
+                        row.get(k).map_or(false, |rv| rv.to_display_string() == v.to_display_string())
+                    })
+                })
+                .collect()
+        } else {
+            rows
+        };
+
         let py_rows = PyList::new(
             py,
-            rows.iter().map(|r| row_to_dict(py, r).unwrap()),
+            filtered.iter().map(|r| row_to_dict(py, r).unwrap()),
         )?;
         let py_errors = PyList::new(
             py,
@@ -498,6 +517,24 @@ impl PyTable {
             .update(filename, &data, body)
             .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
         Ok(path.to_string_lossy().to_string())
+    }
+
+    /// Update multiple files with the same field values.
+    /// Returns list of updated file paths.
+    fn update_many(
+        &self,
+        filenames: Vec<String>,
+        fields: &Bound<'_, PyDict>,
+    ) -> PyResult<Vec<String>> {
+        let data = dict_to_map(fields)?;
+        let mut updated = Vec::new();
+        for filename in &filenames {
+            let path = self.inner
+                .update(filename, &data, None)
+                .map_err(|e| PyRuntimeError::new_err(format!("{}: {}", filename, e)))?;
+            updated.push(path.to_string_lossy().to_string());
+        }
+        Ok(updated)
     }
 
     fn delete(&self, filename: &str) -> PyResult<String> {
@@ -566,6 +603,42 @@ impl PyDatabase {
         let py_table = mdql_core::api::Table::new(&table.path)
             .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
         Ok(PyTable { inner: py_table })
+    }
+
+    /// Execute a SQL SELECT query (including JOINs) across all tables.
+    /// Returns (rows: list[dict], columns: list[str]).
+    fn query(&self, py: Python<'_>, sql: &str) -> PyResult<(PyObject, PyObject)> {
+        let stmt = qp::parse_query(sql)
+            .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+
+        let select = match stmt {
+            qp::Statement::Select(q) => q,
+            _ => return Err(PyValueError::new_err("Only SELECT queries supported")),
+        };
+
+        let (_config, tables, _errors) =
+            mdql_core::loader::load_database(&self.inner.path)
+                .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+
+        let (result_rows, columns) = if !select.joins.is_empty() {
+            mdql_core::query_engine::execute_join_query(&select, &tables)
+        } else {
+            let (schema, rows) = tables
+                .get(&select.table)
+                .ok_or_else(|| PyValueError::new_err(format!("Table '{}' not found", select.table)))?;
+            mdql_core::query_engine::execute_query(&select, rows, schema)
+        }
+        .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+
+        let py_rows = PyList::new(
+            py,
+            result_rows.iter().map(|r| row_to_dict(py, r).unwrap()),
+        )?;
+        let py_cols = PyList::new(py, &columns)?;
+        Ok((
+            py_rows.into_pyobject(py)?.into_any().unbind(),
+            py_cols.into_pyobject(py)?.into_any().unbind(),
+        ))
     }
 }
 

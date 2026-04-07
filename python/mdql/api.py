@@ -90,10 +90,20 @@ class Table:
         except RuntimeError as e:
             raise MdqlError(str(e)) from None
 
-    def load(self) -> tuple[list[dict], list]:
+    def load(self, *, where: dict | None = None) -> tuple[list[dict], list]:
         try:
-            rows, errors = self._rust.load()
+            rows, errors = self._rust.load(where=where)
             return list(rows), list(errors)
+        except RuntimeError as e:
+            raise MdqlError(str(e)) from None
+
+    def update_many(
+        self,
+        filenames: list[str],
+        data: dict[str, Any],
+    ) -> list[str]:
+        try:
+            return list(self._rust.update_many(filenames, data))
         except RuntimeError as e:
             raise MdqlError(str(e)) from None
 
@@ -126,5 +136,13 @@ class Database:
             t.path = Path(rust_table.path)
             t._rust = rust_table
             return t
+        except (ValueError, RuntimeError) as e:
+            raise MdqlError(str(e)) from None
+
+    def query(self, sql: str) -> tuple[list[dict], list[str]]:
+        """Execute a SQL SELECT query (including JOINs) across all tables."""
+        try:
+            rows, columns = self._rust.query(sql)
+            return list(rows), list(columns)
         except (ValueError, RuntimeError) as e:
             raise MdqlError(str(e)) from None
