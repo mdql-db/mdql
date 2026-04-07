@@ -167,74 +167,119 @@ pub fn execute_join_query(
     query: &SelectQuery,
     tables: &HashMap<String, (Schema, Vec<Row>)>,
 ) -> crate::errors::Result<(Vec<Row>, Vec<String>)> {
-    let join = query.join.as_ref().ok_or_else(|| {
-        MdqlError::QueryExecution("No JOIN clause in query".into())
-    })?;
+    if query.joins.is_empty() {
+        return Err(MdqlError::QueryExecution("No JOIN clause in query".into()));
+    }
 
     let left_name = &query.table;
-    let right_name = &join.table;
+    let left_alias = query.table_alias.as_deref().unwrap_or(left_name);
 
-    let (_left_schema, left_rows) = tables.get(left_name.as_str()).ok_or_else(|| {
-        MdqlError::QueryExecution(format!("Unknown table '{}'", left_name))
-    })?;
-    let (_right_schema, right_rows) = tables.get(right_name.as_str()).ok_or_else(|| {
-        MdqlError::QueryExecution(format!("Unknown table '{}'", right_name))
-    })?;
-
-    // Build alias mapping
+    // Build alias→table mapping for all tables
     let mut aliases: HashMap<String, String> = HashMap::new();
     aliases.insert(left_name.clone(), left_name.clone());
-    aliases.insert(right_name.clone(), right_name.clone());
     if let Some(ref a) = query.table_alias {
         aliases.insert(a.clone(), left_name.clone());
     }
-    if let Some(ref a) = join.alias {
-        aliases.insert(a.clone(), right_name.clone());
-    }
-
-    // Resolve ON columns
-    let (left_on_table, left_on_col) = resolve_dotted(&join.left_col, &aliases);
-    let (_right_on_table, right_on_col) = resolve_dotted(&join.right_col, &aliases);
-
-    let (join_left_col, join_right_col) = if left_on_table == *left_name {
-        (left_on_col, right_on_col)
-    } else {
-        (right_on_col, left_on_col)
-    };
-
-    // Build index on right table
-    let mut right_index: HashMap<String, Vec<&Row>> = HashMap::new();
-    for r in right_rows {
-        if let Some(key) = r.get(&join_right_col) {
-            let key_str = key.to_display_string();
-            right_index.entry(key_str).or_default().push(r);
+    for join in &query.joins {
+        aliases.insert(join.table.clone(), join.table.clone());
+        if let Some(ref a) = join.alias {
+            aliases.insert(a.clone(), join.table.clone());
         }
     }
 
-    // Perform join
-    let left_alias = query.table_alias.as_deref().unwrap_or(left_name);
-    let right_alias = join.alias.as_deref().unwrap_or(right_name);
+    // Start with the left table rows, prefixed with alias
+    let (_left_schema, left_rows) = tables.get(left_name.as_str()).ok_or_else(|| {
+        MdqlError::QueryExecution(format!("Unknown table '{}'", left_name))
+    })?;
 
-    let mut joined_rows: Vec<Row> = Vec::new();
-    for lr in left_rows {
-        if let Some(key) = lr.get(&join_left_col) {
-            let key_str = key.to_display_string();
-            if let Some(matching) = right_index.get(&key_str) {
-                for rr in matching {
-                    let mut merged = Row::new();
-                    for (k, v) in lr {
-                        merged.insert(format!("{}.{}", left_alias, k), v.clone());
+    let mut current_rows: Vec<Row> = left_rows
+        .iter()
+        .map(|r| {
+            let mut prefixed = Row::new();
+            for (k, v) in r {
+                prefixed.insert(format!("{}.{}", left_alias, k), v.clone());
+            }
+            prefixed
+        })
+        .collect();
+
+    // Process each JOIN sequentially
+    for join in &query.joins {
+        let right_name = &join.table;
+        let right_alias = join.alias.as_deref().unwrap_or(right_name);
+
+        let (_right_schema, right_rows) = tables.get(right_name.as_str()).ok_or_else(|| {
+            MdqlError::QueryExecution(format!("Unknown table '{}'", right_name))
+        })?;
+
+        // Resolve ON columns to determine which is left vs right
+        let (on_left_table, on_left_col) = resolve_dotted(&join.left_col, &aliases);
+        let (on_right_table, on_right_col) = resolve_dotted(&join.right_col, &aliases);
+
+        // Figure out which ON column refers to the new right table
+        let (left_key, right_key) = if on_right_table == *right_name {
+            // left_col is from the left side, right_col is from the right table
+            let left_alias_for_col = reverse_alias(&on_left_table, &aliases, query, &query.joins);
+            (format!("{}.{}", left_alias_for_col, on_left_col), on_right_col)
+        } else {
+            // right_col is from the left side, left_col is from the right table
+            let right_alias_for_col = reverse_alias(&on_right_table, &aliases, query, &query.joins);
+            (format!("{}.{}", right_alias_for_col, on_right_col), on_left_col)
+        };
+
+        // Build index on right table
+        let mut right_index: HashMap<String, Vec<&Row>> = HashMap::new();
+        for r in right_rows {
+            if let Some(key) = r.get(&right_key) {
+                let key_str = key.to_display_string();
+                right_index.entry(key_str).or_default().push(r);
+            }
+        }
+
+        // Join current rows with right table
+        let mut next_rows: Vec<Row> = Vec::new();
+        for lr in &current_rows {
+            if let Some(key) = lr.get(&left_key) {
+                let key_str = key.to_display_string();
+                if let Some(matching) = right_index.get(&key_str) {
+                    for rr in matching {
+                        let mut merged = lr.clone();
+                        for (k, v) in *rr {
+                            merged.insert(format!("{}.{}", right_alias, k), v.clone());
+                        }
+                        next_rows.push(merged);
                     }
-                    for (k, v) in *rr {
-                        merged.insert(format!("{}.{}", right_alias, k), v.clone());
-                    }
-                    joined_rows.push(merged);
                 }
             }
         }
+        current_rows = next_rows;
     }
 
-    execute(query, &joined_rows, None)
+    execute(query, &current_rows, None)
+}
+
+/// Given a table name, find the alias used for it.
+fn reverse_alias(
+    table_name: &str,
+    aliases: &HashMap<String, String>,
+    query: &SelectQuery,
+    joins: &[JoinClause],
+) -> String {
+    // Check if the FROM table matches
+    if query.table == table_name {
+        return query.table_alias.as_deref().unwrap_or(&query.table).to_string();
+    }
+    // Check join tables
+    for j in joins {
+        if j.table == table_name {
+            return j.alias.as_deref().unwrap_or(&j.table).to_string();
+        }
+    }
+    // Fall back: check if table_name is itself an alias
+    if aliases.contains_key(table_name) {
+        return table_name.to_string();
+    }
+    table_name.to_string()
 }
 
 fn resolve_dotted(col: &str, aliases: &HashMap<String, String>) -> (String, String) {
@@ -561,7 +606,7 @@ mod tests {
             columns: ColumnList::All,
             table: "test".into(),
             table_alias: None,
-            join: None,
+            joins: vec![],
             where_clause: None,
             order_by: None,
             limit: None,
@@ -576,7 +621,7 @@ mod tests {
             columns: ColumnList::All,
             table: "test".into(),
             table_alias: None,
-            join: None,
+            joins: vec![],
             where_clause: Some(WhereClause::Comparison(Comparison {
                 column: "count".into(),
                 op: ">".into(),
@@ -595,7 +640,7 @@ mod tests {
             columns: ColumnList::All,
             table: "test".into(),
             table_alias: None,
-            join: None,
+            joins: vec![],
             where_clause: None,
             order_by: Some(vec![OrderSpec {
                 column: "count".into(),
@@ -614,7 +659,7 @@ mod tests {
             columns: ColumnList::All,
             table: "test".into(),
             table_alias: None,
-            join: None,
+            joins: vec![],
             where_clause: None,
             order_by: None,
             limit: Some(2),
@@ -629,7 +674,7 @@ mod tests {
             columns: ColumnList::All,
             table: "test".into(),
             table_alias: None,
-            join: None,
+            joins: vec![],
             where_clause: Some(WhereClause::Comparison(Comparison {
                 column: "title".into(),
                 op: "LIKE".into(),
@@ -652,7 +697,7 @@ mod tests {
             columns: ColumnList::All,
             table: "test".into(),
             table_alias: None,
-            join: None,
+            joins: vec![],
             where_clause: Some(WhereClause::Comparison(Comparison {
                 column: "optional".into(),
                 op: "IS NULL".into(),

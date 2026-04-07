@@ -239,7 +239,7 @@ fn cmd_query(
 
     match stmt {
         Statement::Select(ref q) => {
-            if q.join.is_some() {
+            if !q.joins.is_empty() {
                 let (_db_config, tables, _errors) =
                     mdql_core::loader::load_database(folder)?;
                 let (result_rows, result_columns) = execute_join_query(q, &tables)?;
@@ -740,7 +740,7 @@ fn exec_repl_query(folder: &std::path::Path, sql: &str, is_db: bool) -> Result<(
 
     match stmt {
         Statement::Select(ref q) => {
-            if q.join.is_some() {
+            if !q.joins.is_empty() {
                 let (_, tables, _) = mdql_core::loader::load_database(folder)?;
                 let (rows, cols) = execute_join_query(q, &tables)?;
                 println!("{}", format_results(&rows, Some(&cols), "table", 0));

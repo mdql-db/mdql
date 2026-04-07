@@ -235,7 +235,7 @@ struct PyQuery {
     #[pyo3(get)]
     limit: Option<i64>,
     #[pyo3(get)]
-    join: Option<PyJoinInfo>,
+    joins: Vec<PyJoinInfo>,
     columns_inner: qp::ColumnList,
     where_inner: Option<qp::WhereClause>,
 }
@@ -394,19 +394,19 @@ fn select_query_to_py(py: Python<'_>, q: &qp::SelectQuery) -> PyResult<PyObject>
         }).collect::<Vec<_>>()
     });
 
-    let join = q.join.as_ref().map(|j| PyJoinInfo {
+    let joins: Vec<PyJoinInfo> = q.joins.iter().map(|j| PyJoinInfo {
         table: j.table.clone(),
         alias: j.alias.clone(),
         left_col: j.left_col.clone(),
         right_col: j.right_col.clone(),
-    });
+    }).collect();
 
     let py_q = Py::new(py, PyQuery {
         table: q.table.clone(),
         table_alias: q.table_alias.clone(),
         order_by,
         limit: q.limit,
-        join,
+        joins,
         columns_inner: q.columns.clone(),
         where_inner: q.where_clause.clone(),
     })?;

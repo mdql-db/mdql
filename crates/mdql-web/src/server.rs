@@ -230,7 +230,7 @@ async fn execute_query(
             };
 
             // Handle JOINs
-            let result = if query.join.is_some() {
+            let result = if !query.joins.is_empty() {
                 mdql_core::query_engine::execute_join_query(&query, &tables)
             } else {
                 mdql_core::query_engine::execute_query(&query, rows, schema)

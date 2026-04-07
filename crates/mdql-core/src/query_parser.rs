@@ -55,7 +55,7 @@ pub struct SelectQuery {
     pub columns: ColumnList,
     pub table: String,
     pub table_alias: Option<String>,
-    pub join: Option<JoinClause>,
+    pub joins: Vec<JoinClause>,
     pub where_clause: Option<WhereClause>,
     pub order_by: Option<Vec<OrderSpec>>,
     pub limit: Option<i64>,
@@ -281,9 +281,9 @@ impl Parser {
             }
         }
 
-        // Optional JOIN
-        let mut join = None;
-        if self.match_keyword("JOIN") {
+        // Optional JOIN(s)
+        let mut joins = Vec::new();
+        while self.match_keyword("JOIN") {
             let join_table = self.parse_ident()?;
             let mut join_alias = None;
             if let Some(t) = self.peek() {
@@ -295,7 +295,7 @@ impl Parser {
             let left_col = self.parse_ident()?;
             self.expect("op", Some("="))?;
             let right_col = self.parse_ident()?;
-            join = Some(JoinClause {
+            joins.push(JoinClause {
                 table: join_table,
                 alias: join_alias,
                 left_col,
@@ -328,7 +328,7 @@ impl Parser {
             columns,
             table,
             table_alias,
-            join,
+            joins,
             where_clause,
             order_by,
             limit,
@@ -940,9 +940,33 @@ mod tests {
         if let Statement::Select(q) = stmt {
             assert_eq!(q.table, "strategies");
             assert_eq!(q.table_alias, Some("s".into()));
-            let join = q.join.unwrap();
+            assert_eq!(q.joins.len(), 1);
+            let join = &q.joins[0];
             assert_eq!(join.table, "backtests");
             assert_eq!(join.alias, Some("b".into()));
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_multi_join() {
+        let stmt = parse_query(
+            "SELECT s.title, b.sharpe, c.verdict FROM strategies s JOIN backtests b ON b.strategy = s.path JOIN critiques c ON c.strategy = s.path",
+        )
+        .unwrap();
+        if let Statement::Select(q) = stmt {
+            assert_eq!(q.table, "strategies");
+            assert_eq!(q.table_alias, Some("s".into()));
+            assert_eq!(q.joins.len(), 2);
+            assert_eq!(q.joins[0].table, "backtests");
+            assert_eq!(q.joins[0].alias, Some("b".into()));
+            assert_eq!(q.joins[0].left_col, "b.strategy");
+            assert_eq!(q.joins[0].right_col, "s.path");
+            assert_eq!(q.joins[1].table, "critiques");
+            assert_eq!(q.joins[1].alias, Some("c".into()));
+            assert_eq!(q.joins[1].left_col, "c.strategy");
+            assert_eq!(q.joins[1].right_col, "s.path");
         } else {
             panic!("Expected Select");
         }

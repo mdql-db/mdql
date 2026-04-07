@@ -122,11 +122,11 @@ class TestJoin:
         )
         assert q.table == "strategies"
         assert q.table_alias == "s"
-        assert q.join is not None
-        assert q.join.table == "backtests"
-        assert q.join.alias == "b"
-        assert q.join.left_col == "b.strategy"
-        assert q.join.right_col == "s.path"
+        assert len(q.joins) == 1
+        assert q.joins[0].table == "backtests"
+        assert q.joins[0].alias == "b"
+        assert q.joins[0].left_col == "b.strategy"
+        assert q.joins[0].right_col == "s.path"
 
     def test_join_with_where(self):
         q = parse_query(
@@ -134,7 +134,7 @@ class TestJoin:
             "JOIN backtests b ON b.strategy = s.path "
             "WHERE b.status = 'pass'"
         )
-        assert q.join is not None
+        assert len(q.joins) == 1
         assert q.where is not None
 
     def test_join_with_order_limit(self):
@@ -143,7 +143,7 @@ class TestJoin:
             "JOIN backtests b ON b.strategy = s.path "
             "ORDER BY b.sharpe DESC LIMIT 5"
         )
-        assert q.join is not None
+        assert len(q.joins) == 1
         assert q.order_by is not None
         assert q.limit == 5
 
