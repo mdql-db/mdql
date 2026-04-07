@@ -816,6 +816,120 @@ impl Database {
         names
     }
 
+    /// Rename a file and update all foreign key references across the database.
+    pub fn rename(
+        &self,
+        table_name: &str,
+        old_filename: &str,
+        new_filename: &str,
+    ) -> crate::errors::Result<String> {
+        let old_name = if old_filename.ends_with(".md") {
+            old_filename.to_string()
+        } else {
+            format!("{}.md", old_filename)
+        };
+        let new_name = if new_filename.ends_with(".md") {
+            new_filename.to_string()
+        } else {
+            format!("{}.md", new_filename)
+        };
+
+        let table = self.tables.get(table_name).ok_or_else(|| {
+            MdqlError::General(format!("Table '{}' not found", table_name))
+        })?;
+
+        let old_path = table.path.join(&old_name);
+        if !old_path.exists() {
+            return Err(MdqlError::General(format!(
+                "File not found: {}/{}",
+                table_name, old_name
+            )));
+        }
+
+        let new_path = table.path.join(&new_name);
+        if new_path.exists() {
+            return Err(MdqlError::General(format!(
+                "Target already exists: {}/{}",
+                table_name, new_name
+            )));
+        }
+
+        // Find all foreign keys that reference this table
+        let referencing_fks: Vec<_> = self
+            .config
+            .foreign_keys
+            .iter()
+            .filter(|fk| fk.to_table == table_name && fk.to_column == "path")
+            .collect();
+
+        // Collect files that need updating
+        let mut updates: Vec<(PathBuf, String, String)> = Vec::new(); // (file_path, column, old_value)
+
+        for fk in &referencing_fks {
+            let ref_table = self.tables.get(&fk.from_table).ok_or_else(|| {
+                MdqlError::General(format!(
+                    "Referencing table '{}' not found",
+                    fk.from_table
+                ))
+            })?;
+
+            // Scan files in the referencing table
+            let entries: Vec<_> = std::fs::read_dir(&ref_table.path)?
+                .filter_map(|e| e.ok())
+                .map(|e| e.path())
+                .filter(|p| {
+                    p.extension().and_then(|e| e.to_str()) == Some("md")
+                        && p.file_name()
+                            .and_then(|n| n.to_str())
+                            .map_or(true, |n| n != MDQL_FILENAME)
+                })
+                .collect();
+
+            for entry in entries {
+                if let Ok((fm, _body)) = read_existing(&entry) {
+                    if let Some(val) = fm.get(&fk.from_column) {
+                        if val == &old_name {
+                            updates.push((
+                                entry,
+                                fk.from_column.clone(),
+                                val.clone(),
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+
+        // Perform all changes: update references first, then rename
+        let mut ref_count = 0;
+        for (filepath, column, _old_val) in &updates {
+            let text = std::fs::read_to_string(filepath)?;
+            // Replace the frontmatter value: "column: old_name" → "column: new_name"
+            let old_pattern = format!("{}: {}", column, old_name);
+            let new_pattern = format!("{}: {}", column, new_name);
+            let updated = text.replacen(&old_pattern, &new_pattern, 1);
+            // Also handle quoted form
+            let old_quoted = format!("{}: \"{}\"", column, old_name);
+            let new_quoted = format!("{}: \"{}\"", column, new_name);
+            let updated = updated.replacen(&old_quoted, &new_quoted, 1);
+            atomic_write(filepath, &updated)?;
+            ref_count += 1;
+        }
+
+        // Rename the file itself
+        std::fs::rename(&old_path, &new_path)?;
+
+        let mut msg = format!("RENAME {}/{} → {}", table_name, old_name, new_name);
+        if ref_count > 0 {
+            msg.push_str(&format!(
+                " — updated {} reference{}",
+                ref_count,
+                if ref_count == 1 { "" } else { "s" }
+            ));
+        }
+        Ok(msg)
+    }
+
     pub fn table(&mut self, name: &str) -> crate::errors::Result<&mut Table> {
         if !self.tables.contains_key(name) {
             let available: Vec<String> = self.tables.keys().cloned().collect();

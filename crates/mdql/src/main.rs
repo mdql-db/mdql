@@ -80,6 +80,17 @@ enum Commands {
         /// Path to table or database folder (optional, auto-discovers)
         folder: Option<PathBuf>,
     },
+    /// Rename a file and update all foreign key references
+    Rename {
+        /// Path to database folder
+        folder: PathBuf,
+        /// Table name (e.g., "strategies")
+        table: String,
+        /// Current filename (e.g., "old-name.md")
+        old_name: String,
+        /// New filename (e.g., "new-name.md")
+        new_name: String,
+    },
     /// Open browser UI for running queries
     Client {
         /// Path to table or database folder
@@ -158,6 +169,12 @@ fn main() {
         }) => cmd_inspect(&folder, file.as_deref(), &format, truncate),
         Some(Commands::Schema { folder }) => cmd_schema(&folder),
         Some(Commands::Stamp { folder }) => cmd_stamp(&folder),
+        Some(Commands::Rename {
+            folder,
+            table,
+            old_name,
+            new_name,
+        }) => cmd_rename(&folder, &table, &old_name, &new_name),
         Some(Commands::Repl { folder }) => {
             let db_path = folder
                 .as_ref()
@@ -447,6 +464,18 @@ fn print_table_schema(s: &mdql_core::schema::Schema) {
         "    normalize_numbered_headings: {}",
         s.rules.normalize_numbered_headings
     );
+}
+
+fn cmd_rename(
+    folder: &std::path::Path,
+    table: &str,
+    old_name: &str,
+    new_name: &str,
+) -> Result<(), MdqlError> {
+    let db = mdql_core::api::Database::new(folder)?;
+    let msg = db.rename(table, old_name, new_name)?;
+    println!("{}", msg);
+    Ok(())
 }
 
 fn cmd_stamp(folder: &std::path::Path) -> Result<(), MdqlError> {
