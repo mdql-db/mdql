@@ -1,8 +1,10 @@
 //! Validate parsed markdown files against a schema.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
+use crate::database::DatabaseConfig;
 use crate::errors::ValidationError;
+use crate::model::{Row, Value};
 use crate::parser::ParsedFile;
 use crate::schema::Schema;
 use crate::stamp::TIMESTAMP_FIELDS;
@@ -356,6 +358,91 @@ fn yaml_value_to_string(value: &serde_yaml::Value) -> String {
     }
 }
 
+/// Validate all foreign key constraints across a loaded database.
+pub fn validate_foreign_keys(
+    db_config: &DatabaseConfig,
+    tables: &HashMap<String, (Schema, Vec<Row>)>,
+) -> Vec<ValidationError> {
+    let mut errors = Vec::new();
+
+    for fk in &db_config.foreign_keys {
+        let to_table = match tables.get(&fk.to_table) {
+            Some(t) => t,
+            None => {
+                errors.push(ValidationError {
+                    file_path: format!("_mdql.md"),
+                    error_type: "fk_missing_table".to_string(),
+                    field: None,
+                    message: format!(
+                        "Foreign key references unknown table '{}'",
+                        fk.to_table
+                    ),
+                    line_number: None,
+                });
+                continue;
+            }
+        };
+
+        let from_table = match tables.get(&fk.from_table) {
+            Some(t) => t,
+            None => {
+                errors.push(ValidationError {
+                    file_path: format!("_mdql.md"),
+                    error_type: "fk_missing_table".to_string(),
+                    field: None,
+                    message: format!(
+                        "Foreign key references unknown table '{}'",
+                        fk.from_table
+                    ),
+                    line_number: None,
+                });
+                continue;
+            }
+        };
+
+        // Build set of valid target values
+        let valid_values: HashSet<String> = to_table
+            .1
+            .iter()
+            .filter_map(|row| {
+                row.get(&fk.to_column).and_then(|v| match v {
+                    Value::Null => None,
+                    _ => Some(v.to_display_string()),
+                })
+            })
+            .collect();
+
+        // Check each row in the referencing table
+        for row in &from_table.1 {
+            let value = match row.get(&fk.from_column) {
+                Some(Value::Null) | None => continue,
+                Some(v) => v,
+            };
+
+            let file_path = row
+                .get("path")
+                .map(|v| format!("{}/{}", fk.from_table, v.to_display_string()))
+                .unwrap_or_else(|| fk.from_table.clone());
+
+            let value_str = value.to_display_string();
+            if !valid_values.contains(&value_str) {
+                errors.push(ValidationError {
+                    file_path,
+                    error_type: "fk_violation".to_string(),
+                    field: Some(fk.from_column.clone()),
+                    message: format!(
+                        "{} = '{}' not found in {}.{}",
+                        fk.from_column, value_str, fk.to_table, fk.to_column
+                    ),
+                    line_number: None,
+                });
+            }
+        }
+    }
+
+    errors
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -457,5 +544,125 @@ mod tests {
         let parsed = parse_text(text, "test.md", false);
         let errors = validate_file(&parsed, &make_schema());
         assert!(errors.iter().any(|e| e.error_type == "duplicate_section"));
+    }
+
+    // --- Foreign key validation tests ---
+
+    use crate::database::{DatabaseConfig, ForeignKey};
+
+    fn make_fk_tables() -> HashMap<String, (Schema, Vec<Row>)> {
+        let strategy_schema = Schema {
+            table: "strategies".to_string(),
+            primary_key: "path".to_string(),
+            frontmatter: IndexMap::new(),
+            h1_required: false,
+            h1_must_equal_frontmatter: None,
+            sections: IndexMap::new(),
+            rules: Rules {
+                reject_unknown_frontmatter: false,
+                reject_unknown_sections: false,
+                reject_duplicate_sections: false,
+                normalize_numbered_headings: false,
+            },
+        };
+
+        let backtest_schema = Schema {
+            table: "backtests".to_string(),
+            primary_key: "path".to_string(),
+            frontmatter: IndexMap::new(),
+            h1_required: false,
+            h1_must_equal_frontmatter: None,
+            sections: IndexMap::new(),
+            rules: Rules {
+                reject_unknown_frontmatter: false,
+                reject_unknown_sections: false,
+                reject_duplicate_sections: false,
+                normalize_numbered_headings: false,
+            },
+        };
+
+        let mut s1 = Row::new();
+        s1.insert("path".into(), Value::String("alpha.md".into()));
+        let mut s2 = Row::new();
+        s2.insert("path".into(), Value::String("beta.md".into()));
+
+        let mut b1 = Row::new();
+        b1.insert("path".into(), Value::String("bt-alpha.md".into()));
+        b1.insert("strategy".into(), Value::String("alpha.md".into()));
+        let mut b2 = Row::new();
+        b2.insert("path".into(), Value::String("bt-beta.md".into()));
+        b2.insert("strategy".into(), Value::String("beta.md".into()));
+
+        let mut tables = HashMap::new();
+        tables.insert("strategies".into(), (strategy_schema, vec![s1, s2]));
+        tables.insert("backtests".into(), (backtest_schema, vec![b1, b2]));
+        tables
+    }
+
+    fn make_fk_config() -> DatabaseConfig {
+        DatabaseConfig {
+            name: "test".into(),
+            foreign_keys: vec![ForeignKey {
+                from_table: "backtests".into(),
+                from_column: "strategy".into(),
+                to_table: "strategies".into(),
+                to_column: "path".into(),
+            }],
+        }
+    }
+
+    #[test]
+    fn test_fk_valid() {
+        let tables = make_fk_tables();
+        let config = make_fk_config();
+        let errors = validate_foreign_keys(&config, &tables);
+        assert!(errors.is_empty(), "Expected no FK errors, got: {:?}", errors);
+    }
+
+    #[test]
+    fn test_fk_violation() {
+        let mut tables = make_fk_tables();
+        // Add a backtest referencing a nonexistent strategy
+        let mut broken = Row::new();
+        broken.insert("path".into(), Value::String("bt-broken.md".into()));
+        broken.insert("strategy".into(), Value::String("nonexistent.md".into()));
+        tables.get_mut("backtests").unwrap().1.push(broken);
+
+        let config = make_fk_config();
+        let errors = validate_foreign_keys(&config, &tables);
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].error_type, "fk_violation");
+        assert!(errors[0].message.contains("nonexistent.md"));
+    }
+
+    #[test]
+    fn test_fk_null_not_violation() {
+        let mut tables = make_fk_tables();
+        // Add a backtest with null strategy — should not be a violation
+        let mut nullref = Row::new();
+        nullref.insert("path".into(), Value::String("bt-null.md".into()));
+        nullref.insert("strategy".into(), Value::Null);
+        tables.get_mut("backtests").unwrap().1.push(nullref);
+
+        let config = make_fk_config();
+        let errors = validate_foreign_keys(&config, &tables);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn test_fk_missing_table() {
+        let tables = make_fk_tables();
+        let config = DatabaseConfig {
+            name: "test".into(),
+            foreign_keys: vec![ForeignKey {
+                from_table: "backtests".into(),
+                from_column: "strategy".into(),
+                to_table: "nonexistent_table".into(),
+                to_column: "path".into(),
+            }],
+        };
+        let errors = validate_foreign_keys(&config, &tables);
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].error_type, "fk_missing_table");
     }
 }

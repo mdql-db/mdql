@@ -28,6 +28,7 @@ struct StaticFiles;
 struct AppState {
     db_path: PathBuf,
     tables: Arc<Mutex<HashMap<String, (Schema, Vec<Row>)>>>,
+    fk_errors: Arc<Mutex<Vec<mdql_core::errors::ValidationError>>>,
 }
 
 #[derive(Serialize)]
@@ -94,16 +95,47 @@ pub async fn run_server(db_path: PathBuf, port: u16) {
         }
     };
 
+    let fk_errors: Arc<Mutex<Vec<mdql_core::errors::ValidationError>>> =
+        Arc::new(Mutex::new(Vec::new()));
+
     let state = AppState {
-        db_path,
+        db_path: db_path.clone(),
         tables: Arc::new(Mutex::new(tables)),
+        fk_errors: fk_errors.clone(),
     };
+
+    // Start filesystem watcher for FK validation
+    {
+        let tables_clone = state.tables.clone();
+        let fk_errors_clone = fk_errors.clone();
+        let db_path_clone = db_path.clone();
+        tokio::task::spawn_blocking(move || {
+            let watcher = match mdql_core::watcher::FkWatcher::start(db_path_clone.clone()) {
+                Ok(w) => w,
+                Err(e) => {
+                    eprintln!("Warning: could not start FK watcher: {}", e);
+                    return;
+                }
+            };
+            loop {
+                if let Some(errors) = watcher.poll() {
+                    *fk_errors_clone.lock().unwrap() = errors;
+                    // Also reload tables on file change
+                    if let Ok(new_tables) = load_all_tables(&db_path_clone) {
+                        *tables_clone.lock().unwrap() = new_tables;
+                    }
+                }
+                std::thread::sleep(std::time::Duration::from_millis(200));
+            }
+        });
+    }
 
     let app = Router::new()
         .route("/api/tables", get(list_tables))
         .route("/api/tables/{name}", get(table_detail))
         .route("/api/query", post(execute_query))
         .route("/api/reload", post(reload_tables))
+        .route("/api/fk-errors", get(get_fk_errors))
         .fallback(static_handler)
         .layer(CorsLayer::permissive())
         .with_state(state);
@@ -338,6 +370,21 @@ fn execute_write(state: &AppState, sql: &str) -> String {
     }
 
     result
+}
+
+async fn get_fk_errors(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let errors = state.fk_errors.lock().unwrap();
+    let error_list: Vec<serde_json::Value> = errors
+        .iter()
+        .map(|e| {
+            serde_json::json!({
+                "file": e.file_path,
+                "field": e.field,
+                "message": e.message,
+            })
+        })
+        .collect();
+    Json(serde_json::json!({ "errors": error_list }))
 }
 
 async fn reload_tables(State(state): State<AppState>) -> Json<serde_json::Value> {

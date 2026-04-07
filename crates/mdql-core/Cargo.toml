@@ -17,6 +17,7 @@ rayon = "1"
 indexmap = { version = "2", features = ["serde"] }
 tantivy = "0.22"
 libc = "0.2"
+notify = "7"
 
 [dev-dependencies]
 pretty_assertions = "1"

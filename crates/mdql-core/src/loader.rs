@@ -151,5 +151,9 @@ pub fn load_database(
         all_errors.extend(errors);
     }
 
+    // Validate foreign key constraints across all tables
+    let fk_errors = crate::validator::validate_foreign_keys(&db_config, &tables);
+    all_errors.extend(fk_errors);
+
     Ok((db_config, tables, all_errors))
 }

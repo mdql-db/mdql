@@ -224,25 +224,76 @@ fn main() {
 }
 
 fn cmd_validate(folder: &std::path::Path) -> Result<(), MdqlError> {
-    let (schema, rows, errors) = load_table(folder)?;
+    if is_database_dir(folder) {
+        // Database-level validation: schema + foreign keys
+        let (_db_config, tables, errors) = mdql_core::loader::load_database(folder)?;
 
-    if errors.is_empty() {
-        println!("All {} files valid in table '{}'", rows.len(), schema.table);
-    } else {
-        for err in &errors {
-            eprintln!("{}", err);
+        let schema_errors: Vec<_> = errors.iter().filter(|e| e.error_type != "fk_violation" && e.error_type != "fk_missing_table").collect();
+        let fk_errors: Vec<_> = errors.iter().filter(|e| e.error_type == "fk_violation" || e.error_type == "fk_missing_table").collect();
+
+        // Report per-table summary
+        let mut table_names: Vec<_> = tables.keys().collect();
+        table_names.sort();
+        for name in &table_names {
+            let row_count = tables[*name].1.len();
+            println!("{}: {} files", name, row_count);
         }
-        let error_files: std::collections::HashSet<_> =
-            errors.iter().map(|e| &e.file_path).collect();
-        eprintln!(
-            "\n{} valid, {} invalid",
-            rows.len(),
-            error_files.len()
-        );
-        std::process::exit(1);
+
+        // Report schema errors
+        if !schema_errors.is_empty() {
+            eprintln!("\nSchema errors:");
+            for err in &schema_errors {
+                eprintln!("  {}", err);
+            }
+        }
+
+        // Report FK violations
+        if !fk_errors.is_empty() {
+            eprintln!("\nForeign key violations:");
+            for err in &fk_errors {
+                eprintln!("  {}", err);
+            }
+        }
+
+        if errors.is_empty() {
+            println!("\nAll valid");
+        } else {
+            eprintln!("\n{} schema error(s), {} FK violation(s)", schema_errors.len(), fk_errors.len());
+            std::process::exit(1);
+        }
+    } else {
+        let (schema, rows, errors) = load_table(folder)?;
+
+        if errors.is_empty() {
+            println!("All {} files valid in table '{}'", rows.len(), schema.table);
+        } else {
+            for err in &errors {
+                eprintln!("{}", err);
+            }
+            let error_files: std::collections::HashSet<_> =
+                errors.iter().map(|e| &e.file_path).collect();
+            eprintln!(
+                "\n{} valid, {} invalid",
+                rows.len(),
+                error_files.len()
+            );
+            std::process::exit(1);
+        }
     }
 
     Ok(())
+}
+
+fn print_fk_warnings(errors: &[mdql_core::errors::ValidationError]) {
+    let fk_errors: Vec<_> = errors
+        .iter()
+        .filter(|e| e.error_type == "fk_violation" || e.error_type == "fk_missing_table")
+        .collect();
+    if !fk_errors.is_empty() {
+        for err in &fk_errors {
+            eprintln!("Warning: {}", err);
+        }
+    }
 }
 
 fn cmd_query(
@@ -257,16 +308,18 @@ fn cmd_query(
     match stmt {
         Statement::Select(ref q) => {
             if !q.joins.is_empty() {
-                let (_db_config, tables, _errors) =
+                let (_db_config, tables, errors) =
                     mdql_core::loader::load_database(folder)?;
+                print_fk_warnings(&errors);
                 let (result_rows, result_columns) = execute_join_query(q, &tables)?;
                 println!(
                     "{}",
                     format_results(&result_rows, Some(&result_columns), format, truncate)
                 );
             } else if is_db {
-                let (_db_config, tables, _errors) =
+                let (_db_config, tables, errors) =
                     mdql_core::loader::load_database(folder)?;
+                print_fk_warnings(&errors);
                 let (schema, rows) = tables
                     .get(&q.table)
                     .ok_or_else(|| {
@@ -717,7 +770,32 @@ fn cmd_repl(db_path: &std::path::Path) -> Result<(), MdqlError> {
     rl.set_helper(Some(helper));
     let _ = rl.load_history(&history_path);
 
+    // Start FK watcher for database directories
+    let fk_watcher = if is_db {
+        match mdql_core::watcher::FkWatcher::start(db_path.to_path_buf()) {
+            Ok(w) => Some(w),
+            Err(e) => {
+                eprintln!("Warning: could not start FK watcher: {}", e);
+                None
+            }
+        }
+    } else {
+        None
+    };
+
     loop {
+        // Check for FK violations from background watcher
+        if let Some(ref watcher) = fk_watcher {
+            if let Some(errors) = watcher.poll() {
+                if !errors.is_empty() {
+                    eprintln!();
+                    for e in &errors {
+                        eprintln!("Warning: {}", e);
+                    }
+                }
+            }
+        }
+
         match rl.readline("mdql> ") {
             Ok(line) => {
                 let sql = line.trim();
@@ -770,11 +848,13 @@ fn exec_repl_query(folder: &std::path::Path, sql: &str, is_db: bool) -> Result<(
     match stmt {
         Statement::Select(ref q) => {
             if !q.joins.is_empty() {
-                let (_, tables, _) = mdql_core::loader::load_database(folder)?;
+                let (_, tables, errors) = mdql_core::loader::load_database(folder)?;
+                print_fk_warnings(&errors);
                 let (rows, cols) = execute_join_query(q, &tables)?;
                 println!("{}", format_results(&rows, Some(&cols), "table", 0));
             } else if is_db {
-                let (_, tables, _) = mdql_core::loader::load_database(folder)?;
+                let (_, tables, errors) = mdql_core::loader::load_database(folder)?;
+                print_fk_warnings(&errors);
                 let (schema, rows) = tables
                     .get(&q.table)
                     .ok_or_else(|| MdqlError::QueryExecution(format!("table '{}' not found", q.table)))?;
