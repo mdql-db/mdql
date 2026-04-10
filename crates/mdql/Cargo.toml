@@ -1,15 +1,23 @@
 [package]
 name = "mdql"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+description = "MDQL — a queryable database where every entry is a markdown file"
+readme = "../../README.md"
+keywords = ["markdown", "database", "query", "sql", "cli"]
+categories = ["database", "command-line-utilities"]
 
 [[bin]]
 name = "mdql"
 path = "src/main.rs"
 
 [dependencies]
-mdql-core = { path = "../mdql-core" }
-mdql-web = { path = "../mdql-web" }
+mdql-core = { path = "../mdql-core", version = "0.1.0" }
+mdql-web = { path = "../mdql-web", version = "0.1.0" }
 clap = { version = "4", features = ["derive"] }
 comfy-table = "7"
 serde_json = "1"

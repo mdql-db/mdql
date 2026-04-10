@@ -1,3 +1,50 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "mdql"
+version = "0.1.0"
+description = "MDQL — a queryable database where every entry is a markdown file"
+requires-python = ">=3.8"
+license = "AGPL-3.0-only"
+authors = [
+    { name = "Rasmus Groth", email = "rasmus@marquela.dev" },
+]
+readme = "README.md"
+keywords = ["markdown", "database", "query", "sql", "frontmatter"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: GNU Affero General Public License v3",
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Database",
+]
+
+[project.urls]
+Homepage = "https://github.com/bliiir/mdql"
+Repository = "https://github.com/bliiir/mdql"
+Issues = "https://github.com/bliiir/mdql/issues"
+
+[project.optional-dependencies]
+pandas = ["pandas>=2.0"]
+polars = ["polars>=1.0"]
+
+[tool.maturin]
+features = ["pyo3/extension-module"]
+module-name = "mdql._native"
+python-source = "python"
+manifest-path = "python/Cargo.toml"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["python"]
