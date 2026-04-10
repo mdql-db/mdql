@@ -6,10 +6,17 @@ MDQL turns folders of markdown files into a schema-validated, queryable database
 
 Your database lives in git. Every insert, update, and migration is a readable diff. Branching, merging, and rollback come free.
 
+## Install
+
+```bash
+cargo install mdql          # from source via Cargo
+brew install mdql-db/tap/mdql  # macOS / Linux via Homebrew
+pip install mdql             # Python bindings
+```
+
 ## Quick start
 
 ```bash
-cargo install mdql
 mdql validate examples/strategies/
 # All 100 files valid in table 'strategies'
 
