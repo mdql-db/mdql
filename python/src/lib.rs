@@ -246,8 +246,9 @@ impl PyQuery {
     fn columns(&self, py: Python<'_>) -> PyObject {
         match &self.columns_inner {
             qp::ColumnList::All => "*".into_pyobject(py).unwrap().into_any().unbind(),
-            qp::ColumnList::Named(cols) => {
-                let list = PyList::new(py, cols).unwrap();
+            qp::ColumnList::Named(exprs) => {
+                let names: Vec<String> = exprs.iter().map(|e| e.output_name()).collect();
+                let list = PyList::new(py, &names).unwrap();
                 list.into_pyobject(py).unwrap().into_any().unbind()
             }
         }
@@ -449,22 +450,43 @@ impl PyTable {
     fn load(
         &self,
         py: Python<'_>,
-        r#where: Option<&Bound<'_, PyDict>>,
+        r#where: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<(PyObject, PyObject)> {
         let (rows, errors) = self
             .inner
             .load()
             .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
 
-        let filtered = if let Some(where_dict) = r#where {
-            let filter = dict_to_map(where_dict)?;
-            rows.into_iter()
-                .filter(|row| {
-                    filter.iter().all(|(k, v)| {
-                        row.get(k).map_or(false, |rv| rv.to_display_string() == v.to_display_string())
+        let filtered = if let Some(where_val) = r#where {
+            if let Ok(where_dict) = where_val.downcast::<PyDict>() {
+                // Dict → equality filter
+                let filter = dict_to_map(where_dict)?;
+                rows.into_iter()
+                    .filter(|row| {
+                        filter.iter().all(|(k, v)| {
+                            row.get(k).map_or(false, |rv| rv.to_display_string() == v.to_display_string())
+                        })
                     })
-                })
-                .collect()
+                    .collect()
+            } else if let Ok(where_str) = where_val.extract::<String>() {
+                // String → parse as SQL WHERE clause
+                let fake_sql = format!("SELECT * FROM _t WHERE {}", where_str);
+                let stmt = qp::parse_query(&fake_sql)
+                    .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+                let clause = match stmt {
+                    qp::Statement::Select(q) => q.where_clause.ok_or_else(|| {
+                        PyValueError::new_err("Could not parse WHERE clause")
+                    })?,
+                    _ => return Err(PyValueError::new_err("Invalid WHERE clause")),
+                };
+                rows.into_iter()
+                    .filter(|row| mdql_core::query_engine::evaluate(&clause, row))
+                    .collect()
+            } else {
+                return Err(PyValueError::new_err(
+                    "where must be a dict or a SQL WHERE string",
+                ));
+            }
         } else {
             rows
         };
@@ -548,6 +570,24 @@ impl PyTable {
         self.inner
             .execute_sql(sql)
             .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+    }
+
+    /// Execute a SELECT query and return structured results.
+    /// Returns (rows: list[dict], columns: list[str]).
+    fn query(&mut self, py: Python<'_>, sql: &str) -> PyResult<(PyObject, PyObject)> {
+        let (result_rows, columns) = self.inner
+            .query_sql(sql)
+            .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+
+        let py_rows = PyList::new(
+            py,
+            result_rows.iter().map(|r| row_to_dict(py, r).unwrap()),
+        )?;
+        let py_cols = PyList::new(py, &columns)?;
+        Ok((
+            py_rows.into_pyobject(py)?.into_any().unbind(),
+            py_cols.into_pyobject(py)?.into_any().unbind(),
+        ))
     }
 
     fn rename_field(&mut self, old_name: &str, new_name: &str) -> PyResult<usize> {

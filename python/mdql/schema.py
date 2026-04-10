@@ -68,6 +68,11 @@ class Schema:
         return self.rules.normalize_numbered_headings
 
     @property
+    def fields(self) -> dict[str, FieldDef]:
+        """All field definitions (alias for frontmatter)."""
+        return self.frontmatter
+
+    @property
     def metadata_keys(self) -> list[str]:
         """Return all queryable column names (frontmatter + synthetic)."""
         keys = ["path", "h1", "created", "modified"]

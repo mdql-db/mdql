@@ -51,19 +51,19 @@ class TestWhere:
 
     def test_enum_filter(self, table_data):
         schema, rows = table_data
-        q = parse_query("SELECT title FROM notes WHERE status = 'draft'")
+        q = parse_query("SELECT title, status FROM notes WHERE status = 'draft'")
         result, _ = execute_query(q, rows, schema)
         assert all(r["status"] == "draft" for r in result)
 
     def test_is_null(self, table_data):
         schema, rows = table_data
-        q = parse_query("SELECT title FROM notes WHERE tags IS NULL")
+        q = parse_query("SELECT title, tags FROM notes WHERE tags IS NULL")
         result, _ = execute_query(q, rows, schema)
         assert all(r.get("tags") is None for r in result)
 
     def test_is_not_null(self, table_data):
         schema, rows = table_data
-        q = parse_query("SELECT title FROM notes WHERE tags IS NOT NULL")
+        q = parse_query("SELECT title, tags FROM notes WHERE tags IS NOT NULL")
         result, _ = execute_query(q, rows, schema)
         assert all(r.get("tags") is not None for r in result)
 
@@ -75,7 +75,7 @@ class TestWhere:
 
     def test_and(self, table_data):
         schema, rows = table_data
-        q = parse_query("SELECT title FROM notes WHERE author = 'Rasmus' AND status = 'draft'")
+        q = parse_query("SELECT title, status FROM notes WHERE author = 'Rasmus' AND status = 'draft'")
         result, _ = execute_query(q, rows, schema)
         assert all(r["status"] == "draft" for r in result)
 
@@ -130,7 +130,7 @@ class TestRealStrategyData:
 
     def test_filter_mechanism(self, strategies):
         schema, rows = strategies
-        q = parse_query("SELECT title FROM strategies WHERE mechanism > 5")
+        q = parse_query("SELECT title, mechanism FROM strategies WHERE mechanism > 5")
         result, _ = execute_query(q, rows, schema)
         assert all(r["mechanism"] > 5 for r in result)
         assert len(result) > 0
@@ -144,7 +144,7 @@ class TestRealStrategyData:
 
     def test_category_like(self, strategies):
         schema, rows = strategies
-        q = parse_query("SELECT title FROM strategies WHERE categories LIKE '%defi%'")
+        q = parse_query("SELECT title, categories FROM strategies WHERE categories LIKE '%defi%'")
         result, _ = execute_query(q, rows, schema)
         assert len(result) > 0
         for r in result:
@@ -152,7 +152,7 @@ class TestRealStrategyData:
 
     def test_status_killed(self, strategies):
         schema, rows = strategies
-        q = parse_query("SELECT title, kill_reason FROM strategies WHERE status = 'KILLED'")
+        q = parse_query("SELECT title, status, kill_reason FROM strategies WHERE status = 'KILLED'")
         result, _ = execute_query(q, rows, schema)
         assert len(result) >= 2
         assert all(r["status"] == "KILLED" for r in result)

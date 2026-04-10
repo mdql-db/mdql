@@ -95,13 +95,20 @@ fn execute_with_fts(
         }
     }
 
-    let columns = match &query.columns {
+    // Check if query has aggregates
+    let has_aggregates = match &query.columns {
+        ColumnList::Named(exprs) => exprs.iter().any(|e| e.is_aggregate()),
+        _ => false,
+    };
+
+    // Output column names
+    let columns: Vec<String> = match &query.columns {
         ColumnList::All => all_columns,
-        ColumnList::Named(cols) => cols.clone(),
+        ColumnList::Named(exprs) => exprs.iter().map(|e| e.output_name()).collect(),
     };
 
     // Filter — try index first, fall back to full scan
-    let mut result: Vec<Row> = if let Some(ref wc) = query.where_clause {
+    let filtered: Vec<Row> = if let Some(ref wc) = query.where_clause {
         let candidate_paths = index.and_then(|idx| try_index_filter(wc, idx));
         if let Some(paths) = candidate_paths {
             rows.iter()
@@ -123,6 +130,20 @@ fn execute_with_fts(
         rows.to_vec()
     };
 
+    // Aggregate if needed
+    let mut result = if has_aggregates || query.group_by.is_some() {
+        let exprs = match &query.columns {
+            ColumnList::Named(exprs) => exprs.clone(),
+            _ => return Err(MdqlError::QueryExecution(
+                "SELECT * with GROUP BY is not supported".into(),
+            )),
+        };
+        let group_keys = query.group_by.as_deref().unwrap_or(&[]);
+        aggregate_rows(&filtered, &exprs, group_keys)?
+    } else {
+        filtered
+    };
+
     // Sort
     if let Some(ref order_by) = query.order_by {
         sort_rows(&mut result, order_by);
@@ -133,7 +154,178 @@ fn execute_with_fts(
         result.truncate(limit as usize);
     }
 
+    // Project — strip row dicts to only the requested columns
+    if !matches!(query.columns, ColumnList::All) {
+        let col_set: std::collections::HashSet<&str> =
+            columns.iter().map(|s| s.as_str()).collect();
+        for row in &mut result {
+            row.retain(|k, _| col_set.contains(k.as_str()));
+        }
+    }
+
     Ok((result, columns))
+}
+
+fn aggregate_rows(
+    rows: &[Row],
+    exprs: &[SelectExpr],
+    group_keys: &[String],
+) -> crate::errors::Result<Vec<Row>> {
+    // Group rows by group_keys
+    let mut groups: Vec<(Vec<Value>, Vec<&Row>)> = Vec::new();
+    let mut key_index: HashMap<Vec<String>, usize> = HashMap::new();
+
+    if group_keys.is_empty() {
+        // No GROUP BY — all rows are one group
+        let all_refs: Vec<&Row> = rows.iter().collect();
+        groups.push((vec![], all_refs));
+    } else {
+        for row in rows {
+            let key: Vec<String> = group_keys
+                .iter()
+                .map(|k| {
+                    row.get(k)
+                        .map(|v| v.to_display_string())
+                        .unwrap_or_default()
+                })
+                .collect();
+            let key_vals: Vec<Value> = group_keys
+                .iter()
+                .map(|k| row.get(k).cloned().unwrap_or(Value::Null))
+                .collect();
+            if let Some(&idx) = key_index.get(&key) {
+                groups[idx].1.push(row);
+            } else {
+                let idx = groups.len();
+                key_index.insert(key, idx);
+                groups.push((key_vals, vec![row]));
+            }
+        }
+    }
+
+    // Compute aggregates per group
+    let mut result = Vec::new();
+    for (key_vals, group_rows) in &groups {
+        let mut out = Row::new();
+
+        // Fill in group key values
+        for (i, k) in group_keys.iter().enumerate() {
+            out.insert(k.clone(), key_vals[i].clone());
+        }
+
+        // Compute each expression
+        for expr in exprs {
+            match expr {
+                SelectExpr::Column(name) => {
+                    // Already filled if it's a group key; otherwise take first row's value
+                    if !out.contains_key(name) {
+                        if let Some(first) = group_rows.first() {
+                            out.insert(
+                                name.clone(),
+                                first.get(name).cloned().unwrap_or(Value::Null),
+                            );
+                        }
+                    }
+                }
+                SelectExpr::Aggregate { func, arg, alias } => {
+                    let out_name = alias
+                        .clone()
+                        .unwrap_or_else(|| expr.output_name());
+                    let val = compute_aggregate(func, arg, group_rows);
+                    out.insert(out_name, val);
+                }
+            }
+        }
+
+        result.push(out);
+    }
+
+    Ok(result)
+}
+
+fn compute_aggregate(func: &AggFunc, arg: &str, rows: &[&Row]) -> Value {
+    match func {
+        AggFunc::Count => {
+            if arg == "*" {
+                Value::Int(rows.len() as i64)
+            } else {
+                let count = rows
+                    .iter()
+                    .filter(|r| {
+                        r.get(arg)
+                            .map_or(false, |v| !v.is_null())
+                    })
+                    .count();
+                Value::Int(count as i64)
+            }
+        }
+        AggFunc::Sum => {
+            let mut total = 0.0f64;
+            let mut has_any = false;
+            for r in rows {
+                if let Some(v) = r.get(arg) {
+                    match v {
+                        Value::Int(n) => { total += *n as f64; has_any = true; }
+                        Value::Float(f) => { total += f; has_any = true; }
+                        _ => {}
+                    }
+                }
+            }
+            if has_any { Value::Float(total) } else { Value::Null }
+        }
+        AggFunc::Avg => {
+            let mut total = 0.0f64;
+            let mut count = 0usize;
+            for r in rows {
+                if let Some(v) = r.get(arg) {
+                    match v {
+                        Value::Int(n) => { total += *n as f64; count += 1; }
+                        Value::Float(f) => { total += f; count += 1; }
+                        _ => {}
+                    }
+                }
+            }
+            if count > 0 { Value::Float(total / count as f64) } else { Value::Null }
+        }
+        AggFunc::Min => {
+            let mut min_val: Option<Value> = None;
+            for r in rows {
+                if let Some(v) = r.get(arg) {
+                    if v.is_null() { continue; }
+                    min_val = Some(match min_val {
+                        None => v.clone(),
+                        Some(ref current) => {
+                            if v.partial_cmp(current) == Some(std::cmp::Ordering::Less) {
+                                v.clone()
+                            } else {
+                                current.clone()
+                            }
+                        }
+                    });
+                }
+            }
+            min_val.unwrap_or(Value::Null)
+        }
+        AggFunc::Max => {
+            let mut max_val: Option<Value> = None;
+            for r in rows {
+                if let Some(v) = r.get(arg) {
+                    if v.is_null() { continue; }
+                    max_val = Some(match max_val {
+                        None => v.clone(),
+                        Some(ref current) => {
+                            if v.partial_cmp(current) == Some(std::cmp::Ordering::Greater) {
+                                v.clone()
+                            } else {
+                                current.clone()
+                            }
+                        }
+                    });
+                }
+            }
+            max_val.unwrap_or(Value::Null)
+        }
+    }
 }
 
 fn evaluate_with_fts(clause: &WhereClause, row: &Row, fts: &FtsResults) -> bool {
@@ -255,7 +447,48 @@ pub fn execute_join_query(
         current_rows = next_rows;
     }
 
-    execute(query, &current_rows, None)
+    let (mut result, columns) = execute(query, &current_rows, None)?;
+
+    // Add unprefixed aliases for non-colliding column names in the output.
+    // e.g., if result has s.title and b.sharpe (no other "title" or "sharpe"),
+    // add "title" and "sharpe" as shorthand keys.
+    if !result.is_empty() {
+        let mut base_counts: HashMap<String, usize> = HashMap::new();
+        for key in &columns {
+            if let Some((_prefix, base)) = key.split_once('.') {
+                *base_counts.entry(base.to_string()).or_default() += 1;
+            }
+        }
+        let unique_bases: Vec<String> = base_counts
+            .into_iter()
+            .filter(|(_, count)| *count == 1)
+            .map(|(base, _)| base)
+            .collect();
+
+        if !unique_bases.is_empty() {
+            let unique_set: std::collections::HashSet<&str> =
+                unique_bases.iter().map(|s| s.as_str()).collect();
+            for row in &mut result {
+                let additions: Vec<(String, Value)> = row
+                    .iter()
+                    .filter_map(|(k, v)| {
+                        k.split_once('.').and_then(|(_, base)| {
+                            if unique_set.contains(base) {
+                                Some((base.to_string(), v.clone()))
+                            } else {
+                                None
+                            }
+                        })
+                    })
+                    .collect();
+                for (k, v) in additions {
+                    row.insert(k, v);
+                }
+            }
+        }
+    }
+
+    Ok((result, columns))
 }
 
 /// Given a table name, find the alias used for it.
@@ -608,6 +841,7 @@ mod tests {
             table_alias: None,
             joins: vec![],
             where_clause: None,
+            group_by: None,
             order_by: None,
             limit: None,
         };
@@ -627,6 +861,7 @@ mod tests {
                 op: ">".into(),
                 value: Some(SqlValue::Int(5)),
             })),
+            group_by: None,
             order_by: None,
             limit: None,
         };
@@ -642,6 +877,7 @@ mod tests {
             table_alias: None,
             joins: vec![],
             where_clause: None,
+            group_by: None,
             order_by: Some(vec![OrderSpec {
                 column: "count".into(),
                 descending: true,
@@ -661,6 +897,7 @@ mod tests {
             table_alias: None,
             joins: vec![],
             where_clause: None,
+            group_by: None,
             order_by: None,
             limit: Some(2),
         };
@@ -680,6 +917,7 @@ mod tests {
                 op: "LIKE".into(),
                 value: Some(SqlValue::String("%lph%".into())),
             })),
+            group_by: None,
             order_by: None,
             limit: None,
         };
@@ -703,6 +941,7 @@ mod tests {
                 op: "IS NULL".into(),
                 value: None,
             })),
+            group_by: None,
             order_by: None,
             limit: None,
         };

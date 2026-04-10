@@ -477,6 +477,17 @@ impl Table {
         }
     }
 
+    /// Execute a SELECT query and return structured results.
+    pub fn query_sql(&mut self, sql: &str) -> crate::errors::Result<(Vec<Row>, Vec<String>)> {
+        let stmt = parse_query(sql)?;
+        let select = match stmt {
+            Statement::Select(q) => q,
+            _ => return Err(MdqlError::QueryParse("Only SELECT queries supported".into())),
+        };
+        let (_, rows, _) = crate::loader::load_table_cached(&self.path, &mut self.cache.lock().unwrap())?;
+        crate::query_engine::execute_query(&select, &rows, &self.schema)
+    }
+
     fn exec_select(&self, query: &SelectQuery) -> crate::errors::Result<String> {
         let (_, rows, _) = crate::loader::load_table_cached(&self.path, &mut self.cache.lock().unwrap())?;
         let (result_rows, result_columns) = crate::query_engine::execute_query(query, &rows, &self.schema)?;

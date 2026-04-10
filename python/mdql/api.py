@@ -72,6 +72,14 @@ class Table:
         except RuntimeError as e:
             raise MdqlError(str(e)) from None
 
+    def query(self, sql: str) -> tuple[list[dict], list[str]]:
+        """Execute a SELECT query and return structured results."""
+        try:
+            rows, columns = self._rust.query(sql)
+            return list(rows), list(columns)
+        except (ValueError, RuntimeError) as e:
+            raise MdqlError(str(e)) from None
+
     def rename_field(self, old_name: str, new_name: str) -> int:
         try:
             return self._rust.rename_field(old_name, new_name)
@@ -90,7 +98,7 @@ class Table:
         except RuntimeError as e:
             raise MdqlError(str(e)) from None
 
-    def load(self, *, where: dict | None = None) -> tuple[list[dict], list]:
+    def load(self, *, where: dict | str | None = None) -> tuple[list[dict], list]:
         try:
             rows, errors = self._rust.load(where=where)
             return list(rows), list(errors)

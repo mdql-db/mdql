@@ -51,12 +51,54 @@ pub struct JoinClause {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum AggFunc {
+    Count,
+    Sum,
+    Avg,
+    Min,
+    Max,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum SelectExpr {
+    Column(String),
+    Aggregate { func: AggFunc, arg: String, alias: Option<String> },
+}
+
+impl SelectExpr {
+    pub fn output_name(&self) -> String {
+        match self {
+            SelectExpr::Column(name) => name.clone(),
+            SelectExpr::Aggregate { func, arg, alias } => {
+                if let Some(a) = alias {
+                    a.clone()
+                } else {
+                    let func_name = match func {
+                        AggFunc::Count => "COUNT",
+                        AggFunc::Sum => "SUM",
+                        AggFunc::Avg => "AVG",
+                        AggFunc::Min => "MIN",
+                        AggFunc::Max => "MAX",
+                    };
+                    format!("{}({})", func_name, arg)
+                }
+            }
+        }
+    }
+
+    pub fn is_aggregate(&self) -> bool {
+        matches!(self, SelectExpr::Aggregate { .. })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct SelectQuery {
     pub columns: ColumnList,
     pub table: String,
     pub table_alias: Option<String>,
     pub joins: Vec<JoinClause>,
     pub where_clause: Option<WhereClause>,
+    pub group_by: Option<Vec<String>>,
     pub order_by: Option<Vec<OrderSpec>>,
     pub limit: Option<i64>,
 }
@@ -64,7 +106,7 @@ pub struct SelectQuery {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ColumnList {
     All,
-    Named(Vec<String>),
+    Named(Vec<SelectExpr>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -123,10 +165,12 @@ pub enum Statement {
 static KEYWORDS: &[&str] = &[
     "SELECT", "FROM", "WHERE", "AND", "OR", "ORDER", "BY",
     "ASC", "DESC", "LIMIT", "LIKE", "IN", "IS", "NOT", "NULL",
-    "JOIN", "ON",
+    "JOIN", "ON", "AS", "GROUP",
     "INSERT", "INTO", "VALUES", "UPDATE", "SET", "DELETE",
     "ALTER", "TABLE", "RENAME", "FIELD", "TO", "DROP", "MERGE", "FIELDS",
 ];
+
+static AGG_FUNCS: &[&str] = &["COUNT", "SUM", "AVG", "MIN", "MAX"];
 
 static TOKEN_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
@@ -308,6 +352,17 @@ impl Parser {
             where_clause = Some(self.parse_or_expr()?);
         }
 
+        let mut group_by = None;
+        if self.match_keyword("GROUP") {
+            self.expect("keyword", Some("BY"))?;
+            let mut cols = vec![self.parse_ident()?];
+            while self.peek().map_or(false, |t| t.token_type == "op" && t.value == ",") {
+                self.advance();
+                cols.push(self.parse_ident()?);
+            }
+            group_by = Some(cols);
+        }
+
         let mut order_by = None;
         if self.match_keyword("ORDER") {
             self.expect("keyword", Some("BY"))?;
@@ -330,6 +385,7 @@ impl Parser {
             table_alias,
             joins,
             where_clause,
+            group_by,
             order_by,
             limit,
         })
@@ -508,12 +564,74 @@ impl Parser {
             }
         }
 
-        let mut cols = vec![self.parse_ident()?];
+        let mut exprs = vec![self.parse_select_expr()?];
         while self.peek().map_or(false, |t| t.token_type == "op" && t.value == ",") {
             self.advance();
-            cols.push(self.parse_ident()?);
+            exprs.push(self.parse_select_expr()?);
         }
-        Ok(ColumnList::Named(cols))
+        Ok(ColumnList::Named(exprs))
+    }
+
+    fn peek_is_agg_func(&self) -> bool {
+        let t = match self.peek() {
+            Some(t) => t,
+            None => return false,
+        };
+        let name_upper = t.value.to_uppercase();
+        if !AGG_FUNCS.contains(&name_upper.as_str()) {
+            return false;
+        }
+        // Only treat as aggregate if followed by (
+        self.tokens
+            .get(self.pos + 1)
+            .map_or(false, |next| next.token_type == "op" && next.value == "(")
+    }
+
+    fn parse_select_expr(&mut self) -> Result<SelectExpr, MdqlError> {
+        let _t = self.peek().ok_or_else(|| {
+            MdqlError::QueryParse("Expected column or aggregate, got end of query".into())
+        })?;
+
+        if self.peek_is_agg_func() {
+            let func_name = self.advance().value.to_uppercase();
+            let func = match func_name.as_str() {
+                "COUNT" => AggFunc::Count,
+                "SUM" => AggFunc::Sum,
+                "AVG" => AggFunc::Avg,
+                "MIN" => AggFunc::Min,
+                "MAX" => AggFunc::Max,
+                _ => unreachable!(),
+            };
+            self.expect("op", Some("("))?;
+            let arg = if self.peek().map_or(false, |t| t.token_type == "op" && t.value == "*") {
+                self.advance();
+                "*".to_string()
+            } else {
+                self.parse_ident()?
+            };
+            self.expect("op", Some(")"))?;
+
+            let alias = if self.match_keyword("AS") {
+                Some(self.parse_ident()?)
+            } else {
+                None
+            };
+
+            Ok(SelectExpr::Aggregate { func, arg, alias })
+        } else {
+            let name = self.parse_ident()?;
+            // Optional AS alias for plain columns
+            if self.match_keyword("AS") {
+                let alias = self.parse_ident()?;
+                Ok(SelectExpr::Aggregate {
+                    func: AggFunc::Count, // Won't be used — reusing for alias
+                    arg: name.clone(),
+                    alias: Some(alias),
+                })
+            } else {
+                Ok(SelectExpr::Column(name))
+            }
+        }
     }
 
     fn parse_ident(&mut self) -> Result<String, MdqlError> {
@@ -704,7 +822,7 @@ impl Parser {
 
     fn is_clause_keyword(&self, t: &Token) -> bool {
         t.token_type == "keyword"
-            && ["WHERE", "ORDER", "LIMIT", "JOIN", "ON"].contains(&t.value.as_str())
+            && ["WHERE", "ORDER", "LIMIT", "JOIN", "ON", "GROUP"].contains(&t.value.as_str())
     }
 
     fn expect_end(&self) -> Result<(), MdqlError> {
@@ -735,7 +853,7 @@ mod tests {
     fn test_simple_select() {
         let stmt = parse_query("SELECT title, status FROM strategies").unwrap();
         if let Statement::Select(q) = stmt {
-            assert_eq!(q.columns, ColumnList::Named(vec!["title".into(), "status".into()]));
+            assert_eq!(q.columns, ColumnList::Named(vec![SelectExpr::Column("title".into()), SelectExpr::Column("status".into())]));
             assert_eq!(q.table, "strategies");
         } else {
             panic!("Expected Select");
@@ -867,7 +985,7 @@ mod tests {
         if let Statement::Select(q) = stmt {
             assert_eq!(
                 q.columns,
-                ColumnList::Named(vec!["Structural Mechanism".into()])
+                ColumnList::Named(vec![SelectExpr::Column("Structural Mechanism".into())])
             );
         } else {
             panic!("Expected Select");
@@ -975,5 +1093,55 @@ mod tests {
     #[test]
     fn test_empty_query() {
         assert!(parse_query("").is_err());
+    }
+
+    #[test]
+    fn test_count_star() {
+        let stmt = parse_query("SELECT status, COUNT(*) AS cnt FROM strategies GROUP BY status").unwrap();
+        if let Statement::Select(q) = stmt {
+            if let ColumnList::Named(exprs) = &q.columns {
+                assert_eq!(exprs.len(), 2);
+                assert_eq!(exprs[0], SelectExpr::Column("status".into()));
+                assert!(matches!(&exprs[1], SelectExpr::Aggregate {
+                    func: AggFunc::Count,
+                    arg,
+                    alias: Some(a),
+                } if arg == "*" && a == "cnt"));
+            } else {
+                panic!("Expected Named columns");
+            }
+            assert_eq!(q.group_by, Some(vec!["status".into()]));
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_count_column_as_ident() {
+        // "count" as a column name should NOT be parsed as the COUNT aggregate
+        let stmt = parse_query("INSERT INTO test (title, count) VALUES ('Hello', 42)").unwrap();
+        if let Statement::Insert(q) = stmt {
+            assert_eq!(q.columns, vec!["title", "count"]);
+        } else {
+            panic!("Expected Insert");
+        }
+    }
+
+    #[test]
+    fn test_multiple_aggregates() {
+        let stmt = parse_query("SELECT MIN(composite), MAX(composite), AVG(composite) FROM strategies").unwrap();
+        if let Statement::Select(q) = stmt {
+            if let ColumnList::Named(exprs) = &q.columns {
+                assert_eq!(exprs.len(), 3);
+                assert!(matches!(&exprs[0], SelectExpr::Aggregate { func: AggFunc::Min, .. }));
+                assert!(matches!(&exprs[1], SelectExpr::Aggregate { func: AggFunc::Max, .. }));
+                assert!(matches!(&exprs[2], SelectExpr::Aggregate { func: AggFunc::Avg, .. }));
+            } else {
+                panic!("Expected Named columns");
+            }
+            assert_eq!(q.group_by, None);
+        } else {
+            panic!("Expected Select");
+        }
     }
 }
