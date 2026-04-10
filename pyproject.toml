@@ -31,9 +31,9 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/bliiir/mdql"
-Repository = "https://github.com/bliiir/mdql"
-Issues = "https://github.com/bliiir/mdql/issues"
+Homepage = "https://github.com/mdql-db/mdql"
+Repository = "https://github.com/mdql-db/mdql"
+Issues = "https://github.com/mdql-db/mdql/issues"
 
 [project.optional-dependencies]
 pandas = ["pandas>=2.0"]

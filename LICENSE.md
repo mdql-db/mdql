@@ -22,7 +22,7 @@ A commercial license is available for organizations that cannot or do not wish t
 - Offer mdql as part of a hosted/SaaS product without releasing your source code
 - Use mdql under terms not covered by the AGPL-3.0
 
-For commercial licensing inquiries, contact: **Rasmus Groth** — rasmus@marquela.dev
+For commercial licensing inquiries, [open an issue](https://github.com/mdql-db/mdql/issues) on the repository.
 
 ## Contributor License Agreement (CLA)
 

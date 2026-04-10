@@ -6,6 +6,27 @@ MDQL turns folders of markdown files into a schema-validated, queryable database
 
 Your database lives in git. Every insert, update, and migration is a readable diff. Branching, merging, and rollback come free.
 
+## Quick start
+
+```bash
+cargo install mdql
+mdql validate examples/strategies/
+# All 100 files valid in table 'strategies'
+
+mdql query examples/strategies/ \
+  "SELECT title, composite FROM strategies ORDER BY composite DESC LIMIT 5"
+```
+
+```
+title                                                                composite
+-------------------------------------------------------------------  ---------
+Bridge Inflow to Destination Chain → DEX Liquidity Pressure                500
+DeFi Protocol TVL Step-Change → Governance Token Repricing Lag             500
+Lending Protocol Daily Interest Accrual Liquidation Threshold Creep        500
+USDC Circle Business-Day Redemption Queue — Weekend Premium Decay          490
+Cascading Liquidation Chain — Second-Order Collateral Asset Short          480
+```
+
 ## Why MDQL
 
 - **Zero infrastructure.** No server, no Docker, no connection strings. `git clone` and you have the database. `rm -rf` and it's gone.
@@ -38,27 +59,6 @@ my-project/
 ```
 
 A `_mdql.md` file marks a directory as part of an MDQL database. The `type` field in frontmatter determines what it is — `database` at the root, `schema` in each table folder. Directories without `_mdql.md` are ignored, so MDQL coexists with any project structure.
-
-## Quick start
-
-```bash
-cargo install mdql
-mdql validate examples/strategies/
-# All 100 files valid in table 'strategies'
-
-mdql query examples/strategies/ \
-  "SELECT title, composite FROM strategies ORDER BY composite DESC LIMIT 5"
-```
-
-```
-title                                                                composite
--------------------------------------------------------------------  ---------
-Bridge Inflow to Destination Chain → DEX Liquidity Pressure                500
-DeFi Protocol TVL Step-Change → Governance Token Repricing Lag             500
-Lending Protocol Daily Interest Accrual Liquidation Threshold Creep        500
-USDC Circle Business-Day Redemption Queue — Weekend Premium Decay          490
-Cascading Liquidation Chain — Second-Order Collateral Asset Short          480
-```
 
 ## How it works
 
