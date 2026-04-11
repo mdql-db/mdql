@@ -8,8 +8,59 @@ use crate::errors::MdqlError;
 // ── AST nodes ──────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum ArithOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Expr {
+    Literal(SqlValue),
+    Column(String),
+    BinaryOp { left: Box<Expr>, op: ArithOp, right: Box<Expr> },
+    UnaryMinus(Box<Expr>),
+}
+
+impl Expr {
+    /// If the expression is a simple column reference, return the name.
+    pub fn as_column(&self) -> Option<&str> {
+        match self {
+            Expr::Column(name) => Some(name),
+            _ => None,
+        }
+    }
+
+    /// A display name for this expression (used as output column name).
+    pub fn display_name(&self) -> String {
+        match self {
+            Expr::Literal(SqlValue::Int(n)) => n.to_string(),
+            Expr::Literal(SqlValue::Float(f)) => f.to_string(),
+            Expr::Literal(SqlValue::String(s)) => format!("'{}'", s),
+            Expr::Literal(SqlValue::Null) => "NULL".to_string(),
+            Expr::Literal(SqlValue::List(_)) => "list".to_string(),
+            Expr::Column(name) => name.clone(),
+            Expr::BinaryOp { left, op, right } => {
+                let op_str = match op {
+                    ArithOp::Add => "+",
+                    ArithOp::Sub => "-",
+                    ArithOp::Mul => "*",
+                    ArithOp::Div => "/",
+                    ArithOp::Mod => "%",
+                };
+                format!("{} {} {}", left.display_name(), op_str, right.display_name())
+            }
+            Expr::UnaryMinus(inner) => format!("-{}", inner.display_name()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct OrderSpec {
     pub column: String,
+    pub expr: Option<Expr>,
     pub descending: bool,
 }
 
@@ -18,6 +69,8 @@ pub struct Comparison {
     pub column: String,
     pub op: String,
     pub value: Option<SqlValue>,
+    pub left_expr: Option<Expr>,
+    pub right_expr: Option<Expr>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -63,6 +116,7 @@ pub enum AggFunc {
 pub enum SelectExpr {
     Column(String),
     Aggregate { func: AggFunc, arg: String, alias: Option<String> },
+    Expr { expr: Expr, alias: Option<String> },
 }
 
 impl SelectExpr {
@@ -82,6 +136,9 @@ impl SelectExpr {
                     };
                     format!("{}({})", func_name, arg)
                 }
+            }
+            SelectExpr::Expr { expr, alias } => {
+                alias.clone().unwrap_or_else(|| expr.display_name())
             }
         }
     }
@@ -178,8 +235,8 @@ static TOKEN_RE: LazyLock<Regex> = LazyLock::new(|| {
         \s*(?:
             (?P<backtick>`[^`]+`)
             | (?P<string>'(?:[^'\\]|\\.)*')
-            | (?P<number>-?\d+(?:\.\d+)?)
-            | (?P<op><=|>=|!=|[=<>,*()])
+            | (?P<number>\d+(?:\.\d+)?)
+            | (?P<op><=|>=|!=|[=<>,*()+\-/%])
             | (?P<word>[A-Za-z_][A-Za-z0-9_./-]*)
         )"#,
     )
@@ -619,18 +676,138 @@ impl Parser {
 
             Ok(SelectExpr::Aggregate { func, arg, alias })
         } else {
-            let name = self.parse_ident()?;
-            // Optional AS alias for plain columns
-            if self.match_keyword("AS") {
-                let alias = self.parse_ident()?;
-                Ok(SelectExpr::Aggregate {
-                    func: AggFunc::Count, // Won't be used — reusing for alias
-                    arg: name.clone(),
-                    alias: Some(alias),
-                })
+            // Parse a general expression (could be a column, literal, or arithmetic)
+            let expr = self.parse_additive()?;
+
+            // Optional AS alias
+            let alias = if self.match_keyword("AS") {
+                Some(self.parse_ident()?)
             } else {
-                Ok(SelectExpr::Column(name))
+                None
+            };
+
+            // If it's a simple column reference with no alias, return Column variant
+            // for backward compatibility
+            if alias.is_none() {
+                if let Expr::Column(name) = &expr {
+                    return Ok(SelectExpr::Column(name.clone()));
+                }
             }
+
+            Ok(SelectExpr::Expr { expr, alias })
+        }
+    }
+
+    // ── Expression parser (precedence climbing) ───────────────────────
+
+    fn peek_is_additive_op(&self) -> bool {
+        self.peek().map_or(false, |t| {
+            t.token_type == "op" && (t.value == "+" || t.value == "-")
+        })
+    }
+
+    fn peek_is_multiplicative_op(&self) -> bool {
+        self.peek().map_or(false, |t| {
+            t.token_type == "op" && (t.value == "*" || t.value == "/" || t.value == "%")
+        })
+    }
+
+    fn parse_additive(&mut self) -> Result<Expr, MdqlError> {
+        let mut left = self.parse_multiplicative()?;
+        while self.peek_is_additive_op() {
+            let op_tok = self.advance();
+            let op = match op_tok.value.as_str() {
+                "+" => ArithOp::Add,
+                "-" => ArithOp::Sub,
+                _ => unreachable!(),
+            };
+            let right = self.parse_multiplicative()?;
+            left = Expr::BinaryOp {
+                left: Box::new(left),
+                op,
+                right: Box::new(right),
+            };
+        }
+        Ok(left)
+    }
+
+    fn parse_multiplicative(&mut self) -> Result<Expr, MdqlError> {
+        let mut left = self.parse_unary()?;
+        while self.peek_is_multiplicative_op() {
+            let op_tok = self.advance();
+            let op = match op_tok.value.as_str() {
+                "*" => ArithOp::Mul,
+                "/" => ArithOp::Div,
+                "%" => ArithOp::Mod,
+                _ => unreachable!(),
+            };
+            let right = self.parse_unary()?;
+            left = Expr::BinaryOp {
+                left: Box::new(left),
+                op,
+                right: Box::new(right),
+            };
+        }
+        Ok(left)
+    }
+
+    fn parse_unary(&mut self) -> Result<Expr, MdqlError> {
+        if self.peek().map_or(false, |t| t.token_type == "op" && t.value == "-") {
+            self.advance();
+            let inner = self.parse_atom()?;
+            // Fold unary minus on literals
+            match inner {
+                Expr::Literal(SqlValue::Int(n)) => Ok(Expr::Literal(SqlValue::Int(-n))),
+                Expr::Literal(SqlValue::Float(f)) => Ok(Expr::Literal(SqlValue::Float(-f))),
+                _ => Ok(Expr::UnaryMinus(Box::new(inner))),
+            }
+        } else {
+            self.parse_atom()
+        }
+    }
+
+    fn parse_atom(&mut self) -> Result<Expr, MdqlError> {
+        let t = self.peek().ok_or_else(|| {
+            MdqlError::QueryParse("Expected expression, got end of query".into())
+        })?;
+
+        match t.token_type.as_str() {
+            "number" => {
+                let v = self.advance().value;
+                if v.contains('.') {
+                    let f: f64 = v.parse().map_err(|_| {
+                        MdqlError::QueryParse(format!("Invalid float: {}", v))
+                    })?;
+                    Ok(Expr::Literal(SqlValue::Float(f)))
+                } else {
+                    let n: i64 = v.parse().map_err(|_| {
+                        MdqlError::QueryParse(format!("Invalid int: {}", v))
+                    })?;
+                    Ok(Expr::Literal(SqlValue::Int(n)))
+                }
+            }
+            "string" => {
+                let v = self.advance().value;
+                Ok(Expr::Literal(SqlValue::String(v)))
+            }
+            "keyword" if t.value == "NULL" => {
+                self.advance();
+                Ok(Expr::Literal(SqlValue::Null))
+            }
+            "op" if t.value == "(" => {
+                self.advance();
+                let expr = self.parse_additive()?;
+                self.expect("op", Some(")"))?;
+                Ok(expr)
+            }
+            "ident" | "keyword" => {
+                let name = self.advance().value;
+                Ok(Expr::Column(name))
+            }
+            _ => Err(MdqlError::QueryParse(format!(
+                "Expected expression, got '{}'",
+                t.raw
+            ))),
         }
     }
 
@@ -677,17 +854,28 @@ impl Parser {
     }
 
     fn parse_comparison(&mut self) -> Result<WhereClause, MdqlError> {
-        // Handle parenthesized expressions
+        // Handle parenthesized boolean expressions
         if self.peek().map_or(false, |t| t.token_type == "op" && t.value == "(") {
+            // Save position — might be arithmetic parens, not boolean
+            let saved_pos = self.pos;
             self.advance();
-            let expr = self.parse_or_expr()?;
-            self.expect("op", Some(")"))?;
-            return Ok(expr);
+            // Try parsing as boolean (OR/AND) expression
+            let result = self.parse_or_expr();
+            if result.is_ok() && self.peek().map_or(false, |t| t.token_type == "op" && t.value == ")") {
+                self.advance();
+                return result;
+            }
+            // Not a boolean paren — rewind and parse as arithmetic expression
+            self.pos = saved_pos;
         }
 
-        let col = self.parse_ident()?;
+        // Parse the left side as a full expression (column, literal, or arithmetic)
+        let left_expr = self.parse_additive()?;
 
-        // IS NULL / IS NOT NULL
+        // Extract column name for backward compat (simple column on left side)
+        let col = left_expr.as_column().unwrap_or("").to_string();
+
+        // IS NULL / IS NOT NULL (only valid with simple column)
         if self.match_keyword("IS") {
             if self.match_keyword("NOT") {
                 self.expect("keyword", Some("NULL"))?;
@@ -695,6 +883,8 @@ impl Parser {
                     column: col,
                     op: "IS NOT NULL".into(),
                     value: None,
+                    left_expr: Some(left_expr),
+                    right_expr: None,
                 }));
             }
             self.expect("keyword", Some("NULL"))?;
@@ -702,6 +892,8 @@ impl Parser {
                 column: col,
                 op: "IS NULL".into(),
                 value: None,
+                left_expr: Some(left_expr),
+                right_expr: None,
             }));
         }
 
@@ -718,6 +910,8 @@ impl Parser {
                 column: col,
                 op: "IN".into(),
                 value: Some(SqlValue::List(values)),
+                left_expr: Some(left_expr),
+                right_expr: None,
             }));
         }
 
@@ -728,6 +922,8 @@ impl Parser {
                 column: col,
                 op: "LIKE".into(),
                 value: Some(val),
+                left_expr: Some(left_expr),
+                right_expr: None,
             }));
         }
 
@@ -739,21 +935,31 @@ impl Parser {
                     column: col,
                     op: "NOT LIKE".into(),
                     value: Some(val),
+                    left_expr: Some(left_expr),
+                    right_expr: None,
                 }));
             }
             return Err(MdqlError::QueryParse("Expected LIKE after NOT".into()));
         }
 
-        // Standard operators
+        // Standard comparison operators
         if let Some(t) = self.peek() {
             if t.token_type == "op" && ["=", "!=", "<", ">", "<=", ">="].contains(&t.value.as_str())
             {
                 let op = self.advance().value;
-                let val = self.parse_value()?;
+                // Parse right side as expression
+                let right_expr = self.parse_additive()?;
+                // Extract SqlValue for backward compat (simple literal on right side)
+                let value = match &right_expr {
+                    Expr::Literal(v) => Some(v.clone()),
+                    _ => None,
+                };
                 return Ok(WhereClause::Comparison(Comparison {
                     column: col,
                     op,
-                    value: Some(val),
+                    value,
+                    left_expr: Some(left_expr),
+                    right_expr: Some(right_expr),
                 }));
             }
         }
@@ -761,7 +967,7 @@ impl Parser {
         let got = self.peek().map_or("end".to_string(), |t| t.raw.clone());
         Err(MdqlError::QueryParse(format!(
             "Expected operator after '{}', got '{}'",
-            col, got
+            left_expr.display_name(), got
         )))
     }
 
@@ -807,7 +1013,8 @@ impl Parser {
     }
 
     fn parse_order_spec(&mut self) -> Result<OrderSpec, MdqlError> {
-        let col = self.parse_ident()?;
+        let expr = self.parse_additive()?;
+        let col = expr.as_column().unwrap_or("").to_string();
         let descending = if self.match_keyword("DESC") {
             true
         } else {
@@ -816,6 +1023,7 @@ impl Parser {
         };
         Ok(OrderSpec {
             column: col,
+            expr: Some(expr),
             descending,
         })
     }
@@ -1140,6 +1348,235 @@ mod tests {
                 panic!("Expected Named columns");
             }
             assert_eq!(q.group_by, None);
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    // ── Expression tests ──────────────────────────────────────────
+
+    #[test]
+    fn test_select_arithmetic_expr() {
+        let stmt = parse_query("SELECT a + b FROM test").unwrap();
+        if let Statement::Select(q) = stmt {
+            if let ColumnList::Named(exprs) = &q.columns {
+                assert_eq!(exprs.len(), 1);
+                assert!(matches!(&exprs[0], SelectExpr::Expr {
+                    expr: Expr::BinaryOp { op: ArithOp::Add, .. },
+                    alias: None,
+                }));
+            } else {
+                panic!("Expected Named columns");
+            }
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_select_arithmetic_with_alias() {
+        let stmt = parse_query("SELECT a + b AS total FROM test").unwrap();
+        if let Statement::Select(q) = stmt {
+            if let ColumnList::Named(exprs) = &q.columns {
+                assert_eq!(exprs.len(), 1);
+                assert!(matches!(&exprs[0], SelectExpr::Expr {
+                    alias: Some(a),
+                    ..
+                } if a == "total"));
+                assert_eq!(exprs[0].output_name(), "total");
+            } else {
+                panic!("Expected Named columns");
+            }
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_select_precedence() {
+        // a + b * c should parse as a + (b * c)
+        let stmt = parse_query("SELECT a + b * c FROM test").unwrap();
+        if let Statement::Select(q) = stmt {
+            if let ColumnList::Named(exprs) = &q.columns {
+                if let SelectExpr::Expr { expr, .. } = &exprs[0] {
+                    if let Expr::BinaryOp { left, op, right } = expr {
+                        assert_eq!(*op, ArithOp::Add);
+                        assert!(matches!(left.as_ref(), Expr::Column(n) if n == "a"));
+                        assert!(matches!(right.as_ref(), Expr::BinaryOp { op: ArithOp::Mul, .. }));
+                    } else {
+                        panic!("Expected BinaryOp");
+                    }
+                } else {
+                    panic!("Expected Expr variant");
+                }
+            } else {
+                panic!("Expected Named columns");
+            }
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_select_parenthesized_expr() {
+        // (a + b) * c should override default precedence
+        let stmt = parse_query("SELECT (a + b) * c FROM test").unwrap();
+        if let Statement::Select(q) = stmt {
+            if let ColumnList::Named(exprs) = &q.columns {
+                if let SelectExpr::Expr { expr, .. } = &exprs[0] {
+                    if let Expr::BinaryOp { left, op, .. } = expr {
+                        assert_eq!(*op, ArithOp::Mul);
+                        assert!(matches!(left.as_ref(), Expr::BinaryOp { op: ArithOp::Add, .. }));
+                    } else {
+                        panic!("Expected BinaryOp");
+                    }
+                } else {
+                    panic!("Expected Expr variant");
+                }
+            } else {
+                panic!("Expected Named columns");
+            }
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_select_unary_minus() {
+        let stmt = parse_query("SELECT -count FROM test").unwrap();
+        if let Statement::Select(q) = stmt {
+            if let ColumnList::Named(exprs) = &q.columns {
+                assert!(matches!(&exprs[0], SelectExpr::Expr {
+                    expr: Expr::UnaryMinus(_),
+                    ..
+                }));
+            } else {
+                panic!("Expected Named columns");
+            }
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_select_negative_literal() {
+        let stmt = parse_query("SELECT -42 FROM test").unwrap();
+        if let Statement::Select(q) = stmt {
+            if let ColumnList::Named(exprs) = &q.columns {
+                // Unary minus folds into the literal
+                assert!(matches!(&exprs[0], SelectExpr::Expr {
+                    expr: Expr::Literal(SqlValue::Int(-42)),
+                    ..
+                }));
+            } else {
+                panic!("Expected Named columns");
+            }
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_where_arithmetic_expr() {
+        let stmt = parse_query("SELECT * FROM test WHERE a + b > 10").unwrap();
+        if let Statement::Select(q) = stmt {
+            if let Some(WhereClause::Comparison(c)) = q.where_clause {
+                assert_eq!(c.op, ">");
+                assert!(matches!(&c.left_expr, Some(Expr::BinaryOp { op: ArithOp::Add, .. })));
+                assert!(matches!(&c.right_expr, Some(Expr::Literal(SqlValue::Int(10)))));
+            } else {
+                panic!("Expected comparison");
+            }
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_where_both_sides_expr() {
+        let stmt = parse_query("SELECT * FROM test WHERE a * 2 > b + 1").unwrap();
+        if let Statement::Select(q) = stmt {
+            if let Some(WhereClause::Comparison(c)) = q.where_clause {
+                assert_eq!(c.op, ">");
+                assert!(matches!(&c.left_expr, Some(Expr::BinaryOp { op: ArithOp::Mul, .. })));
+                assert!(matches!(&c.right_expr, Some(Expr::BinaryOp { op: ArithOp::Add, .. })));
+            } else {
+                panic!("Expected comparison");
+            }
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_order_by_expr() {
+        let stmt = parse_query("SELECT * FROM test ORDER BY a + b DESC").unwrap();
+        if let Statement::Select(q) = stmt {
+            let ob = q.order_by.unwrap();
+            assert_eq!(ob.len(), 1);
+            assert!(ob[0].descending);
+            assert!(matches!(&ob[0].expr, Some(Expr::BinaryOp { op: ArithOp::Add, .. })));
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_all_arithmetic_ops() {
+        let stmt = parse_query("SELECT a + b, a - b, a * b, a / b, a % b FROM test").unwrap();
+        if let Statement::Select(q) = stmt {
+            if let ColumnList::Named(exprs) = &q.columns {
+                assert_eq!(exprs.len(), 5);
+                assert!(matches!(&exprs[0], SelectExpr::Expr { expr: Expr::BinaryOp { op: ArithOp::Add, .. }, .. }));
+                assert!(matches!(&exprs[1], SelectExpr::Expr { expr: Expr::BinaryOp { op: ArithOp::Sub, .. }, .. }));
+                assert!(matches!(&exprs[2], SelectExpr::Expr { expr: Expr::BinaryOp { op: ArithOp::Mul, .. }, .. }));
+                assert!(matches!(&exprs[3], SelectExpr::Expr { expr: Expr::BinaryOp { op: ArithOp::Div, .. }, .. }));
+                assert!(matches!(&exprs[4], SelectExpr::Expr { expr: Expr::BinaryOp { op: ArithOp::Mod, .. }, .. }));
+            } else {
+                panic!("Expected Named columns");
+            }
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_column_with_literal_arithmetic() {
+        let stmt = parse_query("SELECT count * 2 + 1 FROM test").unwrap();
+        if let Statement::Select(q) = stmt {
+            if let ColumnList::Named(exprs) = &q.columns {
+                // Should be (count * 2) + 1
+                if let SelectExpr::Expr { expr, .. } = &exprs[0] {
+                    if let Expr::BinaryOp { left, op, right } = expr {
+                        assert_eq!(*op, ArithOp::Add);
+                        assert!(matches!(right.as_ref(), Expr::Literal(SqlValue::Int(1))));
+                        assert!(matches!(left.as_ref(), Expr::BinaryOp { op: ArithOp::Mul, .. }));
+                    } else {
+                        panic!("Expected BinaryOp");
+                    }
+                } else {
+                    panic!("Expected Expr");
+                }
+            } else {
+                panic!("Expected Named columns");
+            }
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_mixed_columns_and_exprs() {
+        let stmt = parse_query("SELECT title, a + b AS sum, count FROM test").unwrap();
+        if let Statement::Select(q) = stmt {
+            if let ColumnList::Named(exprs) = &q.columns {
+                assert_eq!(exprs.len(), 3);
+                assert_eq!(exprs[0], SelectExpr::Column("title".into()));
+                assert!(matches!(&exprs[1], SelectExpr::Expr { alias: Some(a), .. } if a == "sum"));
+                assert_eq!(exprs[2], SelectExpr::Column("count".into()));
+            } else {
+                panic!("Expected Named columns");
+            }
         } else {
             panic!("Expected Select");
         }
