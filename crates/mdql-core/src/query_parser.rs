@@ -679,9 +679,13 @@ impl Parser {
             // Parse a general expression (could be a column, literal, or arithmetic)
             let expr = self.parse_additive()?;
 
-            // Optional AS alias
+            // Optional alias: explicit (AS alias) or implicit (just an ident)
             let alias = if self.match_keyword("AS") {
                 Some(self.parse_ident()?)
+            } else if self.peek().map_or(false, |t| {
+                t.token_type == "ident" && !self.is_clause_keyword(t)
+            }) {
+                Some(self.advance().value)
             } else {
                 None
             };
@@ -800,7 +804,11 @@ impl Parser {
                 self.expect("op", Some(")"))?;
                 Ok(expr)
             }
-            "ident" | "keyword" => {
+            "ident" => {
+                let name = self.advance().value;
+                Ok(Expr::Column(name))
+            }
+            "keyword" if !Self::is_reserved_keyword(&t.value) => {
                 let name = self.advance().value;
                 Ok(Expr::Column(name))
             }
@@ -1031,6 +1039,17 @@ impl Parser {
     fn is_clause_keyword(&self, t: &Token) -> bool {
         t.token_type == "keyword"
             && ["WHERE", "ORDER", "LIMIT", "JOIN", "ON", "GROUP"].contains(&t.value.as_str())
+    }
+
+    /// Keywords that should never be consumed as column names inside expressions.
+    fn is_reserved_keyword(kw: &str) -> bool {
+        matches!(kw,
+            "AS" | "FROM" | "WHERE" | "AND" | "OR" | "ORDER" | "BY"
+            | "ASC" | "DESC" | "LIMIT" | "JOIN" | "ON" | "GROUP"
+            | "SELECT" | "INSERT" | "INTO" | "VALUES" | "UPDATE" | "SET"
+            | "DELETE" | "ALTER" | "TABLE" | "IS" | "NOT" | "IN" | "LIKE"
+            | "RENAME" | "FIELD" | "TO" | "DROP" | "MERGE" | "FIELDS"
+        )
     }
 
     fn expect_end(&self) -> Result<(), MdqlError> {
