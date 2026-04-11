@@ -144,9 +144,10 @@ fn execute_with_fts(
         filtered
     };
 
-    // Sort
+    // Sort — resolve ORDER BY aliases against SELECT list
     if let Some(ref order_by) = query.order_by {
-        sort_rows(&mut result, order_by);
+        let resolved = resolve_order_aliases(order_by, &query.columns);
+        sort_rows(&mut result, &resolved);
     }
 
     // Limit
@@ -889,6 +890,40 @@ fn try_index_filter(
             }
         }
     }
+}
+
+/// If an ORDER BY column matches a SELECT alias, replace its expr with the
+/// aliased expression so sorting uses the computed value.
+fn resolve_order_aliases(specs: &[OrderSpec], columns: &ColumnList) -> Vec<OrderSpec> {
+    let named = match columns {
+        ColumnList::Named(exprs) => exprs,
+        _ => return specs.to_vec(),
+    };
+
+    // Build alias → expr map
+    let alias_map: HashMap<String, &Expr> = named
+        .iter()
+        .filter_map(|se| match se {
+            SelectExpr::Expr { expr, alias: Some(a) } => Some((a.clone(), expr)),
+            _ => None,
+        })
+        .collect();
+
+    specs
+        .iter()
+        .map(|spec| {
+            // If the ORDER BY column name matches a SELECT alias, use that expression
+            if let Some(expr) = alias_map.get(&spec.column) {
+                OrderSpec {
+                    column: spec.column.clone(),
+                    expr: Some((*expr).clone()),
+                    descending: spec.descending,
+                }
+            } else {
+                spec.clone()
+            }
+        })
+        .collect()
 }
 
 fn sort_rows(rows: &mut Vec<Row>, specs: &[OrderSpec]) {
