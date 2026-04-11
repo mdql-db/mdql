@@ -144,9 +144,10 @@ fn execute_with_fts(
         filtered
     };
 
-    // Sort
+    // Sort — resolve ORDER BY aliases against SELECT list
     if let Some(ref order_by) = query.order_by {
-        sort_rows(&mut result, order_by);
+        let resolved = resolve_order_aliases(order_by, &query.columns);
+        sort_rows(&mut result, &resolved);
     }
 
     // Limit
@@ -154,8 +155,27 @@ fn execute_with_fts(
         result.truncate(limit as usize);
     }
 
-    // Project — strip row dicts to only the requested columns
+    // Project — evaluate expressions and strip to requested columns
     if !matches!(query.columns, ColumnList::All) {
+        let named_exprs = match &query.columns {
+            ColumnList::Named(exprs) => exprs,
+            _ => unreachable!(),
+        };
+
+        // Compute expression columns first, then retain only requested columns
+        let has_expr_cols = named_exprs.iter().any(|e| matches!(e, SelectExpr::Expr { .. }));
+        if has_expr_cols {
+            for row in &mut result {
+                for expr in named_exprs {
+                    if let SelectExpr::Expr { expr: e, alias } = expr {
+                        let name = alias.clone().unwrap_or_else(|| e.display_name());
+                        let val = evaluate_expr(e, row);
+                        row.insert(name, val);
+                    }
+                }
+            }
+        }
+
         let col_set: std::collections::HashSet<&str> =
             columns.iter().map(|s| s.as_str()).collect();
         for row in &mut result {
@@ -227,12 +247,19 @@ fn aggregate_rows(
                         }
                     }
                 }
-                SelectExpr::Aggregate { func, arg, alias } => {
+                SelectExpr::Aggregate { func, arg, arg_expr, alias } => {
                     let out_name = alias
                         .clone()
                         .unwrap_or_else(|| expr.output_name());
-                    let val = compute_aggregate(func, arg, group_rows);
+                    let val = compute_aggregate(func, arg, arg_expr.as_ref(), group_rows);
                     out.insert(out_name, val);
+                }
+                SelectExpr::Expr { expr: e, alias } => {
+                    let out_name = alias.clone().unwrap_or_else(|| e.display_name());
+                    if let Some(first) = group_rows.first() {
+                        let val = evaluate_expr(e, first);
+                        out.insert(out_name, val);
+                    }
                 }
             }
         }
@@ -243,17 +270,27 @@ fn aggregate_rows(
     Ok(result)
 }
 
-fn compute_aggregate(func: &AggFunc, arg: &str, rows: &[&Row]) -> Value {
+/// Resolve a per-row value for an aggregate argument.
+/// If `arg_expr` is set, evaluate it; otherwise look up `arg` as a column name.
+fn resolve_agg_value<'a>(arg: &str, arg_expr: Option<&Expr>, row: &'a Row) -> Value {
+    if let Some(expr) = arg_expr {
+        evaluate_expr(expr, row)
+    } else {
+        row.get(arg).cloned().unwrap_or(Value::Null)
+    }
+}
+
+fn compute_aggregate(func: &AggFunc, arg: &str, arg_expr: Option<&Expr>, rows: &[&Row]) -> Value {
     match func {
         AggFunc::Count => {
-            if arg == "*" {
+            if arg == "*" && arg_expr.is_none() {
                 Value::Int(rows.len() as i64)
             } else {
                 let count = rows
                     .iter()
                     .filter(|r| {
-                        r.get(arg)
-                            .map_or(false, |v| !v.is_null())
+                        let v = resolve_agg_value(arg, arg_expr, r);
+                        !v.is_null()
                     })
                     .count();
                 Value::Int(count as i64)
@@ -263,12 +300,11 @@ fn compute_aggregate(func: &AggFunc, arg: &str, rows: &[&Row]) -> Value {
             let mut total = 0.0f64;
             let mut has_any = false;
             for r in rows {
-                if let Some(v) = r.get(arg) {
-                    match v {
-                        Value::Int(n) => { total += *n as f64; has_any = true; }
-                        Value::Float(f) => { total += f; has_any = true; }
-                        _ => {}
-                    }
+                let v = resolve_agg_value(arg, arg_expr, r);
+                match v {
+                    Value::Int(n) => { total += n as f64; has_any = true; }
+                    Value::Float(f) => { total += f; has_any = true; }
+                    _ => {}
                 }
             }
             if has_any { Value::Float(total) } else { Value::Null }
@@ -277,12 +313,11 @@ fn compute_aggregate(func: &AggFunc, arg: &str, rows: &[&Row]) -> Value {
             let mut total = 0.0f64;
             let mut count = 0usize;
             for r in rows {
-                if let Some(v) = r.get(arg) {
-                    match v {
-                        Value::Int(n) => { total += *n as f64; count += 1; }
-                        Value::Float(f) => { total += f; count += 1; }
-                        _ => {}
-                    }
+                let v = resolve_agg_value(arg, arg_expr, r);
+                match v {
+                    Value::Int(n) => { total += n as f64; count += 1; }
+                    Value::Float(f) => { total += f; count += 1; }
+                    _ => {}
                 }
             }
             if count > 0 { Value::Float(total / count as f64) } else { Value::Null }
@@ -290,38 +325,36 @@ fn compute_aggregate(func: &AggFunc, arg: &str, rows: &[&Row]) -> Value {
         AggFunc::Min => {
             let mut min_val: Option<Value> = None;
             for r in rows {
-                if let Some(v) = r.get(arg) {
-                    if v.is_null() { continue; }
-                    min_val = Some(match min_val {
-                        None => v.clone(),
-                        Some(ref current) => {
-                            if v.partial_cmp(current) == Some(std::cmp::Ordering::Less) {
-                                v.clone()
-                            } else {
-                                current.clone()
-                            }
+                let v = resolve_agg_value(arg, arg_expr, r);
+                if v.is_null() { continue; }
+                min_val = Some(match min_val {
+                    None => v,
+                    Some(ref current) => {
+                        if v.partial_cmp(current) == Some(std::cmp::Ordering::Less) {
+                            v
+                        } else {
+                            current.clone()
                         }
-                    });
-                }
+                    }
+                });
             }
             min_val.unwrap_or(Value::Null)
         }
         AggFunc::Max => {
             let mut max_val: Option<Value> = None;
             for r in rows {
-                if let Some(v) = r.get(arg) {
-                    if v.is_null() { continue; }
-                    max_val = Some(match max_val {
-                        None => v.clone(),
-                        Some(ref current) => {
-                            if v.partial_cmp(current) == Some(std::cmp::Ordering::Greater) {
-                                v.clone()
-                            } else {
-                                current.clone()
-                            }
+                let v = resolve_agg_value(arg, arg_expr, r);
+                if v.is_null() { continue; }
+                max_val = Some(match max_val {
+                    None => v,
+                    Some(ref current) => {
+                        if v.partial_cmp(current) == Some(std::cmp::Ordering::Greater) {
+                            v
+                        } else {
+                            current.clone()
                         }
-                    });
-                }
+                    }
+                });
             }
             max_val.unwrap_or(Value::Null)
         }
@@ -547,7 +580,115 @@ pub fn evaluate(clause: &WhereClause, row: &Row) -> bool {
     }
 }
 
+/// Evaluate an Expr against a row, returning a Value.
+pub fn evaluate_expr(expr: &Expr, row: &Row) -> Value {
+    match expr {
+        Expr::Literal(SqlValue::Int(n)) => Value::Int(*n),
+        Expr::Literal(SqlValue::Float(f)) => Value::Float(*f),
+        Expr::Literal(SqlValue::String(s)) => Value::String(s.clone()),
+        Expr::Literal(SqlValue::Null) => Value::Null,
+        Expr::Literal(SqlValue::List(_)) => Value::Null,
+        Expr::Column(name) => row.get(name).cloned().unwrap_or(Value::Null),
+        Expr::UnaryMinus(inner) => {
+            match evaluate_expr(inner, row) {
+                Value::Int(n) => Value::Int(-n),
+                Value::Float(f) => Value::Float(-f),
+                Value::Null => Value::Null,
+                _ => Value::Null, // non-numeric → NULL
+            }
+        }
+        Expr::BinaryOp { left, op, right } => {
+            let lv = evaluate_expr(left, row);
+            let rv = evaluate_expr(right, row);
+
+            // NULL propagation: any NULL operand → NULL
+            if lv.is_null() || rv.is_null() {
+                return Value::Null;
+            }
+
+            // Extract numeric values with int→float coercion
+            match (&lv, &rv) {
+                (Value::Int(a), Value::Int(b)) => {
+                    match op {
+                        ArithOp::Add => Value::Int(a.wrapping_add(*b)),
+                        ArithOp::Sub => Value::Int(a.wrapping_sub(*b)),
+                        ArithOp::Mul => Value::Int(a.wrapping_mul(*b)),
+                        ArithOp::Div => {
+                            if *b == 0 { Value::Null } else { Value::Int(a / b) }
+                        }
+                        ArithOp::Mod => {
+                            if *b == 0 { Value::Null } else { Value::Int(a % b) }
+                        }
+                    }
+                }
+                _ => {
+                    // Coerce to float
+                    let a = match &lv {
+                        Value::Int(n) => *n as f64,
+                        Value::Float(f) => *f,
+                        _ => return Value::Null,
+                    };
+                    let b = match &rv {
+                        Value::Int(n) => *n as f64,
+                        Value::Float(f) => *f,
+                        _ => return Value::Null,
+                    };
+                    match op {
+                        ArithOp::Add => Value::Float(a + b),
+                        ArithOp::Sub => Value::Float(a - b),
+                        ArithOp::Mul => Value::Float(a * b),
+                        ArithOp::Div => {
+                            if b == 0.0 { Value::Null } else { Value::Float(a / b) }
+                        }
+                        ArithOp::Mod => {
+                            if b == 0.0 { Value::Null } else { Value::Float(a % b) }
+                        }
+                    }
+                }
+            }
+        }
+        Expr::Case { whens, else_expr } => {
+            for (condition, result) in whens {
+                if evaluate(condition, row) {
+                    return evaluate_expr(result, row);
+                }
+            }
+            match else_expr {
+                Some(e) => evaluate_expr(e, row),
+                None => Value::Null,
+            }
+        }
+    }
+}
+
 fn evaluate_comparison(cmp: &Comparison, row: &Row) -> bool {
+    // If we have expression-based comparison (new path), use it for standard ops
+    if let (Some(left_expr), Some(right_expr)) = (&cmp.left_expr, &cmp.right_expr) {
+        if ["=", "!=", "<", ">", "<=", ">="].contains(&cmp.op.as_str()) {
+            let left_val = evaluate_expr(left_expr, row);
+            let right_val = evaluate_expr(right_expr, row);
+
+            // NULL comparison: always false (except IS NULL handled below)
+            if left_val.is_null() || right_val.is_null() {
+                return false;
+            }
+
+            // Coerce for comparison: if types differ, try int→float
+            let ord = compare_model_values(&left_val, &right_val);
+
+            return match cmp.op.as_str() {
+                "=" => ord == Some(Ordering::Equal),
+                "!=" => ord != Some(Ordering::Equal),
+                "<" => ord == Some(Ordering::Less),
+                ">" => ord == Some(Ordering::Greater),
+                "<=" => matches!(ord, Some(Ordering::Less | Ordering::Equal)),
+                ">=" => matches!(ord, Some(Ordering::Greater | Ordering::Equal)),
+                _ => false,
+            };
+        }
+    }
+
+    // Fall back to legacy column-based comparison for IS NULL, IN, LIKE, etc.
     let actual = row.get(&cmp.column);
 
     if cmp.op == "IS NULL" {
@@ -584,6 +725,15 @@ fn evaluate_comparison(cmp: &Comparison, row: &Row) -> bool {
             }
         }
         _ => false,
+    }
+}
+
+/// Compare two model::Value instances, with int↔float coercion.
+fn compare_model_values(a: &Value, b: &Value) -> Option<Ordering> {
+    match (a, b) {
+        (Value::Int(x), Value::Float(y)) => (*x as f64).partial_cmp(y),
+        (Value::Float(x), Value::Int(y)) => x.partial_cmp(&(*y as f64)),
+        _ => a.partial_cmp(b),
     }
 }
 
@@ -759,19 +909,59 @@ fn try_index_filter(
     }
 }
 
+/// If an ORDER BY column matches a SELECT alias, replace its expr with the
+/// aliased expression so sorting uses the computed value.
+fn resolve_order_aliases(specs: &[OrderSpec], columns: &ColumnList) -> Vec<OrderSpec> {
+    let named = match columns {
+        ColumnList::Named(exprs) => exprs,
+        _ => return specs.to_vec(),
+    };
+
+    // Build alias → expr map
+    let alias_map: HashMap<String, &Expr> = named
+        .iter()
+        .filter_map(|se| match se {
+            SelectExpr::Expr { expr, alias: Some(a) } => Some((a.clone(), expr)),
+            _ => None,
+        })
+        .collect();
+
+    specs
+        .iter()
+        .map(|spec| {
+            // If the ORDER BY column name matches a SELECT alias, use that expression
+            if let Some(expr) = alias_map.get(&spec.column) {
+                OrderSpec {
+                    column: spec.column.clone(),
+                    expr: Some((*expr).clone()),
+                    descending: spec.descending,
+                }
+            } else {
+                spec.clone()
+            }
+        })
+        .collect()
+}
+
 fn sort_rows(rows: &mut Vec<Row>, specs: &[OrderSpec]) {
     rows.sort_by(|a, b| {
         for spec in specs {
-            let va = a.get(&spec.column);
-            let vb = b.get(&spec.column);
+            let (va, vb) = if let Some(ref expr) = spec.expr {
+                (evaluate_expr(expr, a), evaluate_expr(expr, b))
+            } else {
+                (
+                    a.get(&spec.column).cloned().unwrap_or(Value::Null),
+                    b.get(&spec.column).cloned().unwrap_or(Value::Null),
+                )
+            };
 
             // NULLs sort last
-            let ordering = match (va, vb) {
-                (None, None) | (Some(Value::Null), Some(Value::Null)) => Ordering::Equal,
-                (None, _) | (Some(Value::Null), _) => Ordering::Greater,
-                (_, None) | (_, Some(Value::Null)) => Ordering::Less,
-                (Some(a_val), Some(b_val)) => {
-                    a_val.partial_cmp(b_val).unwrap_or(Ordering::Equal)
+            let ordering = match (&va, &vb) {
+                (Value::Null, Value::Null) => Ordering::Equal,
+                (Value::Null, _) => Ordering::Greater,
+                (_, Value::Null) => Ordering::Less,
+                (a_val, b_val) => {
+                    compare_model_values(a_val, b_val).unwrap_or(Ordering::Equal)
                 }
             };
 
@@ -860,6 +1050,8 @@ mod tests {
                 column: "count".into(),
                 op: ">".into(),
                 value: Some(SqlValue::Int(5)),
+                left_expr: Some(Expr::Column("count".into())),
+                right_expr: Some(Expr::Literal(SqlValue::Int(5))),
             })),
             group_by: None,
             order_by: None,
@@ -880,6 +1072,7 @@ mod tests {
             group_by: None,
             order_by: Some(vec![OrderSpec {
                 column: "count".into(),
+                expr: Some(Expr::Column("count".into())),
                 descending: true,
             }]),
             limit: None,
@@ -916,6 +1109,8 @@ mod tests {
                 column: "title".into(),
                 op: "LIKE".into(),
                 value: Some(SqlValue::String("%lph%".into())),
+                left_expr: Some(Expr::Column("title".into())),
+                right_expr: None,
             })),
             group_by: None,
             order_by: None,
@@ -940,6 +1135,8 @@ mod tests {
                 column: "optional".into(),
                 op: "IS NULL".into(),
                 value: None,
+                left_expr: Some(Expr::Column("optional".into())),
+                right_expr: None,
             })),
             group_by: None,
             order_by: None,
@@ -948,5 +1145,245 @@ mod tests {
         let (result, _) = execute(&q, &rows, None).unwrap();
         // All rows where optional is NULL or missing
         assert_eq!(result.len(), 3);
+    }
+
+    // ── Expression evaluation tests ─────────────────────────��─────
+
+    #[test]
+    fn test_evaluate_expr_literal() {
+        let row = Row::new();
+        assert_eq!(evaluate_expr(&Expr::Literal(SqlValue::Int(42)), &row), Value::Int(42));
+        assert_eq!(evaluate_expr(&Expr::Literal(SqlValue::Float(3.14)), &row), Value::Float(3.14));
+        assert_eq!(evaluate_expr(&Expr::Literal(SqlValue::Null), &row), Value::Null);
+    }
+
+    #[test]
+    fn test_evaluate_expr_column() {
+        let row = Row::from([("x".into(), Value::Int(10))]);
+        assert_eq!(evaluate_expr(&Expr::Column("x".into()), &row), Value::Int(10));
+        assert_eq!(evaluate_expr(&Expr::Column("missing".into()), &row), Value::Null);
+    }
+
+    #[test]
+    fn test_evaluate_expr_int_arithmetic() {
+        let row = Row::from([("a".into(), Value::Int(10)), ("b".into(), Value::Int(3))]);
+        let add = Expr::BinaryOp {
+            left: Box::new(Expr::Column("a".into())),
+            op: ArithOp::Add,
+            right: Box::new(Expr::Column("b".into())),
+        };
+        assert_eq!(evaluate_expr(&add, &row), Value::Int(13));
+
+        let sub = Expr::BinaryOp {
+            left: Box::new(Expr::Column("a".into())),
+            op: ArithOp::Sub,
+            right: Box::new(Expr::Column("b".into())),
+        };
+        assert_eq!(evaluate_expr(&sub, &row), Value::Int(7));
+
+        let mul = Expr::BinaryOp {
+            left: Box::new(Expr::Column("a".into())),
+            op: ArithOp::Mul,
+            right: Box::new(Expr::Column("b".into())),
+        };
+        assert_eq!(evaluate_expr(&mul, &row), Value::Int(30));
+
+        let div = Expr::BinaryOp {
+            left: Box::new(Expr::Column("a".into())),
+            op: ArithOp::Div,
+            right: Box::new(Expr::Column("b".into())),
+        };
+        assert_eq!(evaluate_expr(&div, &row), Value::Int(3)); // integer division
+
+        let modulo = Expr::BinaryOp {
+            left: Box::new(Expr::Column("a".into())),
+            op: ArithOp::Mod,
+            right: Box::new(Expr::Column("b".into())),
+        };
+        assert_eq!(evaluate_expr(&modulo, &row), Value::Int(1));
+    }
+
+    #[test]
+    fn test_evaluate_expr_float_coercion() {
+        let row = Row::from([("a".into(), Value::Int(10)), ("b".into(), Value::Float(3.0))]);
+        let add = Expr::BinaryOp {
+            left: Box::new(Expr::Column("a".into())),
+            op: ArithOp::Add,
+            right: Box::new(Expr::Column("b".into())),
+        };
+        assert_eq!(evaluate_expr(&add, &row), Value::Float(13.0));
+    }
+
+    #[test]
+    fn test_evaluate_expr_null_propagation() {
+        let row = Row::from([("a".into(), Value::Int(10))]);
+        let add = Expr::BinaryOp {
+            left: Box::new(Expr::Column("a".into())),
+            op: ArithOp::Add,
+            right: Box::new(Expr::Column("missing".into())),
+        };
+        assert_eq!(evaluate_expr(&add, &row), Value::Null);
+    }
+
+    #[test]
+    fn test_evaluate_expr_div_by_zero() {
+        let row = Row::from([("a".into(), Value::Int(10)), ("b".into(), Value::Int(0))]);
+        let div = Expr::BinaryOp {
+            left: Box::new(Expr::Column("a".into())),
+            op: ArithOp::Div,
+            right: Box::new(Expr::Column("b".into())),
+        };
+        assert_eq!(evaluate_expr(&div, &row), Value::Null);
+    }
+
+    #[test]
+    fn test_evaluate_expr_unary_minus() {
+        let row = Row::from([("x".into(), Value::Int(5))]);
+        let neg = Expr::UnaryMinus(Box::new(Expr::Column("x".into())));
+        assert_eq!(evaluate_expr(&neg, &row), Value::Int(-5));
+    }
+
+    #[test]
+    fn test_select_with_expression() {
+        // Integration test: SELECT count * 2 AS doubled FROM test
+        let stmt = crate::query_parser::parse_query(
+            "SELECT count * 2 AS doubled FROM test"
+        ).unwrap();
+        if let crate::query_parser::Statement::Select(q) = stmt {
+            let (rows, cols) = execute(&q, &make_rows(), None).unwrap();
+            assert_eq!(cols, vec!["doubled"]);
+            assert_eq!(rows.len(), 3);
+            // Rows are: count=10, count=5, count=20
+            let values: Vec<Value> = rows.iter().map(|r| r["doubled"].clone()).collect();
+            assert!(values.contains(&Value::Int(20)));
+            assert!(values.contains(&Value::Int(10)));
+            assert!(values.contains(&Value::Int(40)));
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_where_with_expression() {
+        // SELECT * FROM test WHERE count * 2 > 15
+        let stmt = crate::query_parser::parse_query(
+            "SELECT * FROM test WHERE count * 2 > 15"
+        ).unwrap();
+        if let crate::query_parser::Statement::Select(q) = stmt {
+            let (rows, _) = execute(&q, &make_rows(), None).unwrap();
+            // count=10 → 20 > 15 ✓, count=5 → 10 > 15 ✗, count=20 → 40 > 15 ✓
+            assert_eq!(rows.len(), 2);
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_order_by_expression() {
+        // SELECT * FROM test ORDER BY count * -1 ASC (effectively DESC by count)
+        let stmt = crate::query_parser::parse_query(
+            "SELECT title, count FROM test ORDER BY count * -1 ASC"
+        ).unwrap();
+        if let crate::query_parser::Statement::Select(q) = stmt {
+            let (rows, _) = execute(&q, &make_rows(), None).unwrap();
+            // count: 20 → -20, 10 → -10, 5 → -5, ASC means -20, -10, -5
+            assert_eq!(rows[0]["count"], Value::Int(20));
+            assert_eq!(rows[1]["count"], Value::Int(10));
+            assert_eq!(rows[2]["count"], Value::Int(5));
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    // ── CASE WHEN evaluation tests ────────────────────────────────
+
+    #[test]
+    fn test_case_when_eval_basic() {
+        let row = Row::from([("status".into(), Value::String("ACTIVE".into()))]);
+        let expr = Expr::Case {
+            whens: vec![(
+                WhereClause::Comparison(Comparison {
+                    column: "status".into(),
+                    op: "=".into(),
+                    value: Some(SqlValue::String("ACTIVE".into())),
+                    left_expr: Some(Expr::Column("status".into())),
+                    right_expr: Some(Expr::Literal(SqlValue::String("ACTIVE".into()))),
+                }),
+                Box::new(Expr::Literal(SqlValue::Int(1))),
+            )],
+            else_expr: Some(Box::new(Expr::Literal(SqlValue::Int(0)))),
+        };
+        assert_eq!(evaluate_expr(&expr, &row), Value::Int(1));
+    }
+
+    #[test]
+    fn test_case_when_eval_else() {
+        let row = Row::from([("status".into(), Value::String("KILLED".into()))]);
+        let expr = Expr::Case {
+            whens: vec![(
+                WhereClause::Comparison(Comparison {
+                    column: "status".into(),
+                    op: "=".into(),
+                    value: Some(SqlValue::String("ACTIVE".into())),
+                    left_expr: Some(Expr::Column("status".into())),
+                    right_expr: Some(Expr::Literal(SqlValue::String("ACTIVE".into()))),
+                }),
+                Box::new(Expr::Literal(SqlValue::Int(1))),
+            )],
+            else_expr: Some(Box::new(Expr::Literal(SqlValue::Int(0)))),
+        };
+        assert_eq!(evaluate_expr(&expr, &row), Value::Int(0));
+    }
+
+    #[test]
+    fn test_case_when_eval_no_else_null() {
+        let row = Row::from([("x".into(), Value::Int(99))]);
+        let expr = Expr::Case {
+            whens: vec![(
+                WhereClause::Comparison(Comparison {
+                    column: "x".into(),
+                    op: "=".into(),
+                    value: Some(SqlValue::Int(1)),
+                    left_expr: Some(Expr::Column("x".into())),
+                    right_expr: Some(Expr::Literal(SqlValue::Int(1))),
+                }),
+                Box::new(Expr::Literal(SqlValue::String("one".into()))),
+            )],
+            else_expr: None,
+        };
+        assert_eq!(evaluate_expr(&expr, &row), Value::Null);
+    }
+
+    #[test]
+    fn test_case_when_in_aggregate_query() {
+        // SUM(CASE WHEN count > 5 THEN count ELSE 0 END)
+        // Rows: count=10, count=5, count=20 → should sum 10 + 0 + 20 = 30
+        let stmt = crate::query_parser::parse_query(
+            "SELECT SUM(CASE WHEN count > 5 THEN count ELSE 0 END) AS total FROM test"
+        ).unwrap();
+        if let crate::query_parser::Statement::Select(q) = stmt {
+            let (rows, cols) = execute(&q, &make_rows(), None).unwrap();
+            assert_eq!(cols, vec!["total"]);
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0]["total"], Value::Float(30.0));
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_case_when_with_unary_minus_in_aggregate() {
+        // SUM(CASE WHEN title = 'Alpha' THEN count ELSE -count END)
+        // Alpha: 10, Beta: -5, Gamma: -20 → 10 - 5 - 20 = -15
+        let stmt = crate::query_parser::parse_query(
+            "SELECT SUM(CASE WHEN title = 'Alpha' THEN count ELSE -count END) AS net FROM test"
+        ).unwrap();
+        if let crate::query_parser::Statement::Select(q) = stmt {
+            let (rows, _) = execute(&q, &make_rows(), None).unwrap();
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0]["net"], Value::Float(-15.0));
+        } else {
+            panic!("Expected Select");
+        }
     }
 }
