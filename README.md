@@ -2,7 +2,7 @@
 
 A database where every entry is a markdown file and every change is a readable diff.
 
-MDQL turns folders of markdown files into a schema-validated, queryable database. Frontmatter fields are metadata columns. H2 sections are content columns. The files are the database — there is nothing else. Every file reads like a normal markdown document, but you get full SQL: SELECT, INSERT, UPDATE, DELETE, JOINs across multiple tables, ORDER BY, and aggregation.
+MDQL turns folders of markdown files into a schema-validated, queryable database. Frontmatter fields are metadata columns. H2 sections are content columns. The files are the database — there is nothing else. Every file reads like a normal markdown document, but you get full SQL: SELECT, INSERT, UPDATE, DELETE, JOINs across multiple tables, ORDER BY, aggregation, computed expressions, and CASE WHEN.
 
 Your database lives in git. Every insert, update, and migration is a readable diff. Branching, merging, and rollback come free.
 
@@ -225,6 +225,19 @@ rows, columns = strategies.query(
 )
 # rows: list of dicts
 # columns: list of column names
+
+# Computed expressions and CASE WHEN
+rows, columns = strategies.query(
+    "SELECT title, mechanism * safety score, "
+    "CASE WHEN mechanism >= 7 THEN 'high' ELSE 'low' END tier "
+    "FROM strategies ORDER BY score DESC"
+)
+
+# Conditional aggregation
+rows, columns = strategies.query(
+    "SELECT SUM(CASE WHEN status = 'LIVE' THEN 1 ELSE 0 END) live_count, "
+    "COUNT(*) total FROM strategies"
+)
 ```
 
 ### Load rows with filtering
@@ -353,6 +366,54 @@ mdql query examples/strategies/ \
 Supported WHERE operators: `=`, `!=`, `<`, `>`, `<=`, `>=`, `LIKE`, `IN`, `IS NULL`, `IS NOT NULL`, `AND`, `OR`
 
 Column names with spaces use backticks: `` SELECT `Structural Mechanism` FROM strategies ``
+
+### Computed expressions
+
+Arithmetic expressions (`+`, `-`, `*`, `/`, `%`) work in SELECT, WHERE, and ORDER BY. Supports parentheses, unary minus, and mixed int/float coercion.
+
+```bash
+# Computed columns with aliases
+mdql query examples/strategies/ \
+  "SELECT title, mechanism * safety total_score FROM strategies ORDER BY total_score DESC LIMIT 5"
+
+# Expressions in WHERE
+mdql query examples/strategies/ \
+  "SELECT title FROM strategies WHERE mechanism + implementation > 10"
+
+# Parenthesized expressions
+mdql query examples/strategies/ \
+  "SELECT title, (mechanism + implementation) / 2 avg_score FROM strategies"
+```
+
+Integer division truncates (`7 / 2 = 3`). Division by zero returns NULL. NULL propagates through all arithmetic.
+
+### Column aliases
+
+Columns can be aliased with `AS` or by placing the alias directly after the expression (implicit alias). ORDER BY can reference SELECT aliases.
+
+```bash
+# Explicit alias with AS
+mdql query examples/ \
+  "SELECT s.title AS name, b.sharpe AS ratio FROM strategies s JOIN backtests b ON b.strategy = s.path"
+
+# Implicit alias (no AS keyword)
+mdql query examples/ \
+  "SELECT s.composite comp, b.edge_vs_random edge FROM strategies s JOIN backtests b ON b.strategy = s.path ORDER BY edge DESC"
+```
+
+### CASE WHEN
+
+CASE WHEN expressions work anywhere a value is expected — in SELECT, WHERE, ORDER BY, and inside aggregate functions.
+
+```bash
+# Categorize rows
+mdql query examples/strategies/ \
+  "SELECT title, CASE WHEN mechanism >= 7 THEN 'high' WHEN mechanism >= 4 THEN 'medium' ELSE 'low' END rating FROM strategies"
+
+# Conditional aggregation
+mdql query examples/strategies/ \
+  "SELECT COUNT(*) total, SUM(CASE WHEN mechanism >= 7 THEN 1 ELSE 0 END) high_mechanism FROM strategies"
+```
 
 ### JOINs
 
