@@ -3,6 +3,7 @@ name = "mdql-python"
 version = "0.2.0"
 edition = "2021"
 publish = false
+license-file = "../LICENSE.md"
 
 [lib]
 name = "mdql"
