@@ -22,15 +22,13 @@ pub enum Expr {
     Column(String),
     BinaryOp { left: Box<Expr>, op: ArithOp, right: Box<Expr> },
     UnaryMinus(Box<Expr>),
+    Case { whens: Vec<(WhereClause, Box<Expr>)>, else_expr: Option<Box<Expr>> },
 }
 
 impl Expr {
     /// If the expression is a simple column reference, return the name.
     pub fn as_column(&self) -> Option<&str> {
-        match self {
-            Expr::Column(name) => Some(name),
-            _ => None,
-        }
+        if let Expr::Column(name) = self { Some(name) } else { None }
     }
 
     /// A display name for this expression (used as output column name).
@@ -53,6 +51,7 @@ impl Expr {
                 format!("{} {} {}", left.display_name(), op_str, right.display_name())
             }
             Expr::UnaryMinus(inner) => format!("-{}", inner.display_name()),
+            Expr::Case { .. } => "CASE".to_string(),
         }
     }
 }
@@ -115,7 +114,7 @@ pub enum AggFunc {
 #[derive(Debug, Clone, PartialEq)]
 pub enum SelectExpr {
     Column(String),
-    Aggregate { func: AggFunc, arg: String, alias: Option<String> },
+    Aggregate { func: AggFunc, arg: String, arg_expr: Option<Expr>, alias: Option<String> },
     Expr { expr: Expr, alias: Option<String> },
 }
 
@@ -123,7 +122,7 @@ impl SelectExpr {
     pub fn output_name(&self) -> String {
         match self {
             SelectExpr::Column(name) => name.clone(),
-            SelectExpr::Aggregate { func, arg, alias } => {
+            SelectExpr::Aggregate { func, arg, alias, .. } => {
                 if let Some(a) = alias {
                     a.clone()
                 } else {
@@ -225,6 +224,7 @@ static KEYWORDS: &[&str] = &[
     "JOIN", "ON", "AS", "GROUP",
     "INSERT", "INTO", "VALUES", "UPDATE", "SET", "DELETE",
     "ALTER", "TABLE", "RENAME", "FIELD", "TO", "DROP", "MERGE", "FIELDS",
+    "CASE", "WHEN", "THEN", "ELSE", "END",
 ];
 
 static AGG_FUNCS: &[&str] = &["COUNT", "SUM", "AVG", "MIN", "MAX"];
@@ -660,21 +660,31 @@ impl Parser {
                 _ => unreachable!(),
             };
             self.expect("op", Some("("))?;
-            let arg = if self.peek().map_or(false, |t| t.token_type == "op" && t.value == "*") {
+            let (arg, arg_expr) = if self.peek().map_or(false, |t| t.token_type == "op" && t.value == "*") {
                 self.advance();
-                "*".to_string()
+                ("*".to_string(), None)
             } else {
-                self.parse_ident()?
+                // Parse a full expression inside the aggregate (supports CASE WHEN, arithmetic, etc.)
+                let expr = self.parse_additive()?;
+                if let Expr::Column(name) = &expr {
+                    (name.clone(), None)
+                } else {
+                    (expr.display_name(), Some(expr))
+                }
             };
             self.expect("op", Some(")"))?;
 
             let alias = if self.match_keyword("AS") {
                 Some(self.parse_ident()?)
+            } else if self.peek().map_or(false, |t| {
+                t.token_type == "ident" && !self.is_clause_keyword(t)
+            }) {
+                Some(self.advance().value)
             } else {
                 None
             };
 
-            Ok(SelectExpr::Aggregate { func, arg, alias })
+            Ok(SelectExpr::Aggregate { func, arg, arg_expr, alias })
         } else {
             // Parse a general expression (could be a column, literal, or arithmetic)
             let expr = self.parse_additive()?;
@@ -798,6 +808,9 @@ impl Parser {
                 self.advance();
                 Ok(Expr::Literal(SqlValue::Null))
             }
+            "keyword" if t.value == "CASE" => {
+                self.parse_case_expr()
+            }
             "op" if t.value == "(" => {
                 self.advance();
                 let expr = self.parse_additive()?;
@@ -817,6 +830,27 @@ impl Parser {
                 t.raw
             ))),
         }
+    }
+
+    fn parse_case_expr(&mut self) -> Result<Expr, MdqlError> {
+        self.expect("keyword", Some("CASE"))?;
+        let mut whens = Vec::new();
+        while self.match_keyword("WHEN") {
+            let condition = self.parse_or_expr()?;
+            self.expect("keyword", Some("THEN"))?;
+            let result = self.parse_additive()?;
+            whens.push((condition, Box::new(result)));
+        }
+        if whens.is_empty() {
+            return Err(MdqlError::QueryParse("CASE requires at least one WHEN clause".into()));
+        }
+        let else_expr = if self.match_keyword("ELSE") {
+            Some(Box::new(self.parse_additive()?))
+        } else {
+            None
+        };
+        self.expect("keyword", Some("END"))?;
+        Ok(Expr::Case { whens, else_expr })
     }
 
     fn parse_ident(&mut self) -> Result<String, MdqlError> {
@@ -1049,6 +1083,7 @@ impl Parser {
             | "SELECT" | "INSERT" | "INTO" | "VALUES" | "UPDATE" | "SET"
             | "DELETE" | "ALTER" | "TABLE" | "IS" | "NOT" | "IN" | "LIKE"
             | "RENAME" | "FIELD" | "TO" | "DROP" | "MERGE" | "FIELDS"
+            | "CASE" | "WHEN" | "THEN" | "ELSE" | "END"
         )
     }
 
@@ -1333,6 +1368,7 @@ mod tests {
                     func: AggFunc::Count,
                     arg,
                     alias: Some(a),
+                    ..
                 } if arg == "*" && a == "cnt"));
             } else {
                 panic!("Expected Named columns");
@@ -1593,6 +1629,111 @@ mod tests {
                 assert_eq!(exprs[0], SelectExpr::Column("title".into()));
                 assert!(matches!(&exprs[1], SelectExpr::Expr { alias: Some(a), .. } if a == "sum"));
                 assert_eq!(exprs[2], SelectExpr::Column("count".into()));
+            } else {
+                panic!("Expected Named columns");
+            }
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    // ── CASE WHEN tests ──────────────────────────────────────────
+
+    #[test]
+    fn test_case_when_basic() {
+        let stmt = parse_query(
+            "SELECT CASE WHEN status = 'ACTIVE' THEN 1 ELSE 0 END FROM test"
+        ).unwrap();
+        if let Statement::Select(q) = stmt {
+            if let ColumnList::Named(exprs) = &q.columns {
+                assert_eq!(exprs.len(), 1);
+                assert!(matches!(&exprs[0], SelectExpr::Expr {
+                    expr: Expr::Case { .. },
+                    ..
+                }));
+            } else {
+                panic!("Expected Named columns");
+            }
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_case_when_multiple_branches() {
+        let stmt = parse_query(
+            "SELECT CASE WHEN x > 10 THEN 'high' WHEN x > 5 THEN 'mid' ELSE 'low' END FROM test"
+        ).unwrap();
+        if let Statement::Select(q) = stmt {
+            if let ColumnList::Named(exprs) = &q.columns {
+                if let SelectExpr::Expr { expr: Expr::Case { whens, else_expr }, .. } = &exprs[0] {
+                    assert_eq!(whens.len(), 2);
+                    assert!(else_expr.is_some());
+                } else {
+                    panic!("Expected Case expression");
+                }
+            } else {
+                panic!("Expected Named columns");
+            }
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_case_when_no_else() {
+        let stmt = parse_query(
+            "SELECT CASE WHEN x = 1 THEN 'one' END FROM test"
+        ).unwrap();
+        if let Statement::Select(q) = stmt {
+            if let ColumnList::Named(exprs) = &q.columns {
+                if let SelectExpr::Expr { expr: Expr::Case { whens, else_expr }, .. } = &exprs[0] {
+                    assert_eq!(whens.len(), 1);
+                    assert!(else_expr.is_none());
+                } else {
+                    panic!("Expected Case expression");
+                }
+            } else {
+                panic!("Expected Named columns");
+            }
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_case_when_in_aggregate() {
+        let stmt = parse_query(
+            "SELECT SUM(CASE WHEN side = 'BUY' THEN size ELSE -size END) AS net FROM orders GROUP BY token"
+        ).unwrap();
+        if let Statement::Select(q) = stmt {
+            if let ColumnList::Named(exprs) = &q.columns {
+                assert_eq!(exprs.len(), 1);
+                assert!(matches!(&exprs[0], SelectExpr::Aggregate {
+                    func: AggFunc::Sum,
+                    arg_expr: Some(Expr::Case { .. }),
+                    alias: Some(a),
+                    ..
+                } if a == "net"));
+            } else {
+                panic!("Expected Named columns");
+            }
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_case_when_with_alias() {
+        let stmt = parse_query(
+            "SELECT CASE WHEN x > 0 THEN 'pos' ELSE 'neg' END AS sign FROM test"
+        ).unwrap();
+        if let Statement::Select(q) = stmt {
+            if let ColumnList::Named(exprs) = &q.columns {
+                assert!(matches!(&exprs[0], SelectExpr::Expr {
+                    expr: Expr::Case { .. },
+                    alias: Some(a),
+                } if a == "sign"));
             } else {
                 panic!("Expected Named columns");
             }

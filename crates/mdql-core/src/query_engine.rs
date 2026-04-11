@@ -247,11 +247,11 @@ fn aggregate_rows(
                         }
                     }
                 }
-                SelectExpr::Aggregate { func, arg, alias } => {
+                SelectExpr::Aggregate { func, arg, arg_expr, alias } => {
                     let out_name = alias
                         .clone()
                         .unwrap_or_else(|| expr.output_name());
-                    let val = compute_aggregate(func, arg, group_rows);
+                    let val = compute_aggregate(func, arg, arg_expr.as_ref(), group_rows);
                     out.insert(out_name, val);
                 }
                 SelectExpr::Expr { expr: e, alias } => {
@@ -270,17 +270,27 @@ fn aggregate_rows(
     Ok(result)
 }
 
-fn compute_aggregate(func: &AggFunc, arg: &str, rows: &[&Row]) -> Value {
+/// Resolve a per-row value for an aggregate argument.
+/// If `arg_expr` is set, evaluate it; otherwise look up `arg` as a column name.
+fn resolve_agg_value<'a>(arg: &str, arg_expr: Option<&Expr>, row: &'a Row) -> Value {
+    if let Some(expr) = arg_expr {
+        evaluate_expr(expr, row)
+    } else {
+        row.get(arg).cloned().unwrap_or(Value::Null)
+    }
+}
+
+fn compute_aggregate(func: &AggFunc, arg: &str, arg_expr: Option<&Expr>, rows: &[&Row]) -> Value {
     match func {
         AggFunc::Count => {
-            if arg == "*" {
+            if arg == "*" && arg_expr.is_none() {
                 Value::Int(rows.len() as i64)
             } else {
                 let count = rows
                     .iter()
                     .filter(|r| {
-                        r.get(arg)
-                            .map_or(false, |v| !v.is_null())
+                        let v = resolve_agg_value(arg, arg_expr, r);
+                        !v.is_null()
                     })
                     .count();
                 Value::Int(count as i64)
@@ -290,12 +300,11 @@ fn compute_aggregate(func: &AggFunc, arg: &str, rows: &[&Row]) -> Value {
             let mut total = 0.0f64;
             let mut has_any = false;
             for r in rows {
-                if let Some(v) = r.get(arg) {
-                    match v {
-                        Value::Int(n) => { total += *n as f64; has_any = true; }
-                        Value::Float(f) => { total += f; has_any = true; }
-                        _ => {}
-                    }
+                let v = resolve_agg_value(arg, arg_expr, r);
+                match v {
+                    Value::Int(n) => { total += n as f64; has_any = true; }
+                    Value::Float(f) => { total += f; has_any = true; }
+                    _ => {}
                 }
             }
             if has_any { Value::Float(total) } else { Value::Null }
@@ -304,12 +313,11 @@ fn compute_aggregate(func: &AggFunc, arg: &str, rows: &[&Row]) -> Value {
             let mut total = 0.0f64;
             let mut count = 0usize;
             for r in rows {
-                if let Some(v) = r.get(arg) {
-                    match v {
-                        Value::Int(n) => { total += *n as f64; count += 1; }
-                        Value::Float(f) => { total += f; count += 1; }
-                        _ => {}
-                    }
+                let v = resolve_agg_value(arg, arg_expr, r);
+                match v {
+                    Value::Int(n) => { total += n as f64; count += 1; }
+                    Value::Float(f) => { total += f; count += 1; }
+                    _ => {}
                 }
             }
             if count > 0 { Value::Float(total / count as f64) } else { Value::Null }
@@ -317,38 +325,36 @@ fn compute_aggregate(func: &AggFunc, arg: &str, rows: &[&Row]) -> Value {
         AggFunc::Min => {
             let mut min_val: Option<Value> = None;
             for r in rows {
-                if let Some(v) = r.get(arg) {
-                    if v.is_null() { continue; }
-                    min_val = Some(match min_val {
-                        None => v.clone(),
-                        Some(ref current) => {
-                            if v.partial_cmp(current) == Some(std::cmp::Ordering::Less) {
-                                v.clone()
-                            } else {
-                                current.clone()
-                            }
+                let v = resolve_agg_value(arg, arg_expr, r);
+                if v.is_null() { continue; }
+                min_val = Some(match min_val {
+                    None => v,
+                    Some(ref current) => {
+                        if v.partial_cmp(current) == Some(std::cmp::Ordering::Less) {
+                            v
+                        } else {
+                            current.clone()
                         }
-                    });
-                }
+                    }
+                });
             }
             min_val.unwrap_or(Value::Null)
         }
         AggFunc::Max => {
             let mut max_val: Option<Value> = None;
             for r in rows {
-                if let Some(v) = r.get(arg) {
-                    if v.is_null() { continue; }
-                    max_val = Some(match max_val {
-                        None => v.clone(),
-                        Some(ref current) => {
-                            if v.partial_cmp(current) == Some(std::cmp::Ordering::Greater) {
-                                v.clone()
-                            } else {
-                                current.clone()
-                            }
+                let v = resolve_agg_value(arg, arg_expr, r);
+                if v.is_null() { continue; }
+                max_val = Some(match max_val {
+                    None => v,
+                    Some(ref current) => {
+                        if v.partial_cmp(current) == Some(std::cmp::Ordering::Greater) {
+                            v
+                        } else {
+                            current.clone()
                         }
-                    });
-                }
+                    }
+                });
             }
             max_val.unwrap_or(Value::Null)
         }
@@ -639,6 +645,17 @@ pub fn evaluate_expr(expr: &Expr, row: &Row) -> Value {
                         }
                     }
                 }
+            }
+        }
+        Expr::Case { whens, else_expr } => {
+            for (condition, result) in whens {
+                if evaluate(condition, row) {
+                    return evaluate_expr(result, row);
+                }
+            }
+            match else_expr {
+                Some(e) => evaluate_expr(e, row),
+                None => Value::Null,
             }
         }
     }
@@ -1273,6 +1290,98 @@ mod tests {
             assert_eq!(rows[0]["count"], Value::Int(20));
             assert_eq!(rows[1]["count"], Value::Int(10));
             assert_eq!(rows[2]["count"], Value::Int(5));
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    // ── CASE WHEN evaluation tests ────────────────────────────────
+
+    #[test]
+    fn test_case_when_eval_basic() {
+        let row = Row::from([("status".into(), Value::String("ACTIVE".into()))]);
+        let expr = Expr::Case {
+            whens: vec![(
+                WhereClause::Comparison(Comparison {
+                    column: "status".into(),
+                    op: "=".into(),
+                    value: Some(SqlValue::String("ACTIVE".into())),
+                    left_expr: Some(Expr::Column("status".into())),
+                    right_expr: Some(Expr::Literal(SqlValue::String("ACTIVE".into()))),
+                }),
+                Box::new(Expr::Literal(SqlValue::Int(1))),
+            )],
+            else_expr: Some(Box::new(Expr::Literal(SqlValue::Int(0)))),
+        };
+        assert_eq!(evaluate_expr(&expr, &row), Value::Int(1));
+    }
+
+    #[test]
+    fn test_case_when_eval_else() {
+        let row = Row::from([("status".into(), Value::String("KILLED".into()))]);
+        let expr = Expr::Case {
+            whens: vec![(
+                WhereClause::Comparison(Comparison {
+                    column: "status".into(),
+                    op: "=".into(),
+                    value: Some(SqlValue::String("ACTIVE".into())),
+                    left_expr: Some(Expr::Column("status".into())),
+                    right_expr: Some(Expr::Literal(SqlValue::String("ACTIVE".into()))),
+                }),
+                Box::new(Expr::Literal(SqlValue::Int(1))),
+            )],
+            else_expr: Some(Box::new(Expr::Literal(SqlValue::Int(0)))),
+        };
+        assert_eq!(evaluate_expr(&expr, &row), Value::Int(0));
+    }
+
+    #[test]
+    fn test_case_when_eval_no_else_null() {
+        let row = Row::from([("x".into(), Value::Int(99))]);
+        let expr = Expr::Case {
+            whens: vec![(
+                WhereClause::Comparison(Comparison {
+                    column: "x".into(),
+                    op: "=".into(),
+                    value: Some(SqlValue::Int(1)),
+                    left_expr: Some(Expr::Column("x".into())),
+                    right_expr: Some(Expr::Literal(SqlValue::Int(1))),
+                }),
+                Box::new(Expr::Literal(SqlValue::String("one".into()))),
+            )],
+            else_expr: None,
+        };
+        assert_eq!(evaluate_expr(&expr, &row), Value::Null);
+    }
+
+    #[test]
+    fn test_case_when_in_aggregate_query() {
+        // SUM(CASE WHEN count > 5 THEN count ELSE 0 END)
+        // Rows: count=10, count=5, count=20 → should sum 10 + 0 + 20 = 30
+        let stmt = crate::query_parser::parse_query(
+            "SELECT SUM(CASE WHEN count > 5 THEN count ELSE 0 END) AS total FROM test"
+        ).unwrap();
+        if let crate::query_parser::Statement::Select(q) = stmt {
+            let (rows, cols) = execute(&q, &make_rows(), None).unwrap();
+            assert_eq!(cols, vec!["total"]);
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0]["total"], Value::Float(30.0));
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_case_when_with_unary_minus_in_aggregate() {
+        // SUM(CASE WHEN title = 'Alpha' THEN count ELSE -count END)
+        // Alpha: 10, Beta: -5, Gamma: -20 → 10 - 5 - 20 = -15
+        let stmt = crate::query_parser::parse_query(
+            "SELECT SUM(CASE WHEN title = 'Alpha' THEN count ELSE -count END) AS net FROM test"
+        ).unwrap();
+        if let crate::query_parser::Statement::Select(q) = stmt {
+            let (rows, _) = execute(&q, &make_rows(), None).unwrap();
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0]["net"], Value::Float(-15.0));
         } else {
             panic!("Expected Select");
         }
