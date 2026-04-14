@@ -5,6 +5,7 @@ Wraps the Rust _native module to provide a Python-compatible interface.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -125,7 +126,15 @@ class Table:
 class Database:
     """A multi-table MDQL database."""
 
-    def __init__(self, path: str | Path) -> None:
+    def __init__(self, path: str | Path | None = None) -> None:
+        if path is None:
+            env_path = os.environ.get("MDQL_DATABASE_PATH")
+            if env_path:
+                path = env_path
+            else:
+                raise MdqlError(
+                    "No path provided and MDQL_DATABASE_PATH not set"
+                )
         self.path = Path(path)
         self._rust = RustDatabase(str(self.path))
 

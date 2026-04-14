@@ -571,6 +571,42 @@ The web server exposes a REST API:
 - `POST /api/query` — execute SQL
 - `GET /api/fk-errors` — current foreign key violations (updated by background watcher)
 
+## Multi-agent setup
+
+MDQL is a single-writer, filesystem-based database. When multiple agents or processes need to read and write the same data, point them all at the same directory. MDQL's `flock` locking serializes writes automatically.
+
+For multi-agent setups, keep the database in its own directory (and optionally its own git repo for audit trail), separate from application code:
+
+```
+~/repos/
+  my-project/         # application code — branched freely
+  my-project-db/      # MDQL database — shared by all agents
+    _mdql.md
+    strategies/
+    orders/
+```
+
+### `MDQL_DATABASE_PATH`
+
+Set the `MDQL_DATABASE_PATH` environment variable so agents and CLI commands find the database without hardcoding paths.
+
+```bash
+export MDQL_DATABASE_PATH=~/repos/my-project-db
+
+# CLI commands fall back to this when no folder is given
+mdql validate
+mdql repl
+```
+
+```python
+from mdql import Database
+
+# Reads MDQL_DATABASE_PATH when no path is given
+db = Database()
+```
+
+An explicit path always takes precedence: `Database("/other/path")` and `mdql validate /other/path` ignore the env var.
+
 ## Pandas integration
 
 ```bash

@@ -24,8 +24,8 @@ struct Cli {
 enum Commands {
     /// Validate all markdown files in a table folder
     Validate {
-        /// Path to table folder
-        folder: PathBuf,
+        /// Path to table or database folder (falls back to MDQL_DATABASE_PATH)
+        folder: Option<PathBuf>,
     },
     /// Run a SQL statement against a table or database
     Query {
@@ -129,6 +129,7 @@ fn is_database_dir(folder: &std::path::Path) -> bool {
 }
 
 fn discover_db(start: Option<&std::path::Path>) -> Option<PathBuf> {
+    // Walk up from start looking for _mdql.md
     let mut folder = start
         .unwrap_or(&std::env::current_dir().unwrap_or_default())
         .to_path_buf();
@@ -140,16 +141,46 @@ fn discover_db(start: Option<&std::path::Path>) -> Option<PathBuf> {
             return Some(folder);
         }
         if !folder.pop() {
-            return None;
+            break;
         }
     }
+    // Fall back to MDQL_DATABASE_PATH env var
+    if let Ok(env_path) = std::env::var("MDQL_DATABASE_PATH") {
+        let p = PathBuf::from(env_path);
+        if p.join(MDQL_FILENAME).exists() {
+            return Some(p);
+        }
+    }
+    None
+}
+
+/// Resolve an optional folder argument, falling back to MDQL_DATABASE_PATH.
+fn resolve_folder(folder: Option<&std::path::Path>) -> Result<PathBuf, MdqlError> {
+    if let Some(f) = folder {
+        return Ok(f.to_path_buf());
+    }
+    if let Ok(env_path) = std::env::var("MDQL_DATABASE_PATH") {
+        let p = PathBuf::from(env_path);
+        if p.exists() {
+            return Ok(p);
+        }
+        return Err(MdqlError::General(format!(
+            "MDQL_DATABASE_PATH={} does not exist",
+            p.display()
+        )));
+    }
+    Err(MdqlError::General(
+        "No folder provided and MDQL_DATABASE_PATH not set".into(),
+    ))
 }
 
 fn main() {
     let cli = Cli::parse();
 
     let result = match cli.command {
-        Some(Commands::Validate { folder }) => cmd_validate(&folder),
+        Some(Commands::Validate { folder }) => {
+            resolve_folder(folder.as_deref()).and_then(|f| cmd_validate(&f))
+        }
         Some(Commands::Query {
             folder,
             sql,
