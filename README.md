@@ -140,7 +140,9 @@ rules:
 Documentation about this table goes here.
 ```
 
-Supported types: `string`, `int`, `float`, `bool`, `date`, `datetime`, `string[]`
+Supported types: `string`, `int`, `float`, `bool`, `date`, `datetime`, `string[]`, `dict`
+
+The `dict` type stores a flat YAML mapping with scalar values. Use dot-access in queries: `SELECT params.entry_days FROM strategies`.
 
 ### Database config (`type: database`)
 

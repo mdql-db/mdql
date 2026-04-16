@@ -63,6 +63,12 @@ fn value_to_json(val: &Value) -> serde_json::Value {
         Value::List(items) => {
             serde_json::Value::Array(items.iter().map(|s| serde_json::Value::String(s.clone())).collect())
         }
+        Value::Dict(map) => {
+            let obj: serde_json::Map<String, serde_json::Value> = map.iter()
+                .map(|(k, v)| (k.clone(), value_to_json(v)))
+                .collect();
+            serde_json::Value::Object(obj)
+        }
     }
 }
 
@@ -92,6 +98,12 @@ fn csv_value(val: &Value) -> String {
         Value::List(items) => items.join(";"),
         Value::Date(d) => d.format("%Y-%m-%d").to_string(),
         Value::DateTime(dt) => dt.format("%Y-%m-%dT%H:%M:%S").to_string(),
+        Value::Dict(map) => {
+            let obj: serde_json::Map<String, serde_json::Value> = map.iter()
+                .map(|(k, v)| (k.clone(), value_to_json(v)))
+                .collect();
+            serde_json::to_string(&serde_json::Value::Object(obj)).unwrap_or_default()
+        }
         other => other.to_display_string(),
     }
 }

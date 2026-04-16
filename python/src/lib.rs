@@ -38,6 +38,13 @@ fn value_to_py(py: Python<'_>, val: &Value) -> PyObject {
             let list = PyList::new(py, items).unwrap();
             list.into_pyobject(py).unwrap().into_any().unbind()
         }
+        Value::Dict(map) => {
+            let dict = PyDict::new(py);
+            for (k, v) in map {
+                dict.set_item(k, value_to_py(py, v)).unwrap();
+            }
+            dict.into_pyobject(py).unwrap().into_any().unbind()
+        }
     }
 }
 
@@ -65,6 +72,15 @@ fn py_to_value(obj: &Bound<'_, pyo3::PyAny>) -> PyResult<Value> {
             return Ok(Value::Date(d));
         }
         return Ok(Value::String(s));
+    }
+    if let Ok(dict) = obj.downcast::<PyDict>() {
+        let mut map = indexmap::IndexMap::new();
+        for (k, v) in dict.iter() {
+            let key: String = k.extract()?;
+            let val = py_to_value(&v)?;
+            map.insert(key, val);
+        }
+        return Ok(Value::Dict(map));
     }
     if let Ok(list) = obj.downcast::<PyList>() {
         let items: Vec<String> = list

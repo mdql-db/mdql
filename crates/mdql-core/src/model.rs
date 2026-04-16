@@ -2,6 +2,8 @@
 
 use std::collections::HashMap;
 
+use indexmap::IndexMap;
+
 use crate::parser::ParsedFile;
 use crate::schema::{FieldType, Schema};
 
@@ -19,6 +21,7 @@ pub enum Value {
     Date(chrono::NaiveDate),
     DateTime(chrono::NaiveDateTime),
     List(Vec<String>),
+    Dict(IndexMap<String, Value>),
 }
 
 impl Value {
@@ -65,6 +68,12 @@ impl Value {
             Value::Date(d) => d.format("%Y-%m-%d").to_string(),
             Value::DateTime(dt) => dt.format("%Y-%m-%dT%H:%M:%S").to_string(),
             Value::List(items) => items.join(", "),
+            Value::Dict(map) => {
+                let pairs: Vec<String> = map.iter()
+                    .map(|(k, v)| format!("{}: {}", k, v.to_display_string()))
+                    .collect();
+                format!("{{{}}}", pairs.join(", "))
+            }
         }
     }
 }
@@ -92,6 +101,11 @@ impl PartialOrd for Value {
             _ => self.to_display_string().partial_cmp(&other.to_display_string()),
         }
     }
+}
+
+/// Public wrapper for yaml_to_value, used by api.rs for CLI coercion.
+pub fn yaml_to_value_pub(val: &serde_yaml::Value, field_type: Option<&FieldType>) -> Value {
+    yaml_to_value(val, field_type)
 }
 
 fn yaml_to_value(val: &serde_yaml::Value, field_type: Option<&FieldType>) -> Value {
@@ -135,6 +149,19 @@ fn yaml_to_value(val: &serde_yaml::Value, field_type: Option<&FieldType>) -> Val
                 .filter_map(|v| v.as_str().map(|s| s.to_string()))
                 .collect();
             Value::List(items)
+        }
+        serde_yaml::Value::Mapping(mapping) => {
+            if let Some(FieldType::Dict) = field_type {
+                let mut dict = IndexMap::new();
+                for (k, v) in mapping {
+                    if let Some(key) = k.as_str() {
+                        dict.insert(key.to_string(), yaml_to_value(v, None));
+                    }
+                }
+                Value::Dict(dict)
+            } else {
+                Value::String(format!("{:?}", val))
+            }
         }
         _ => Value::String(format!("{:?}", val)),
     }

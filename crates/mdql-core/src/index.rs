@@ -65,7 +65,7 @@ fn value_to_key(v: &Value) -> Option<IndexKey> {
             // Store floats as their bit representation for ordering
             Some(IndexKey::Int(f.to_bits() as i64))
         }
-        Value::Null | Value::List(_) => None,
+        Value::Null | Value::List(_) | Value::Dict(_) => None,
     }
 }
 

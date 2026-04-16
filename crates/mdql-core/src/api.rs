@@ -57,6 +57,25 @@ fn format_yaml_value(value: &Value, field_type: &FieldType) -> String {
                 format!("\n{}", list.join("\n"))
             }
         }
+        (Value::Dict(map), _) => {
+            if map.is_empty() {
+                "{}".to_string()
+            } else {
+                let lines: Vec<String> = map.iter()
+                    .map(|(k, v)| {
+                        let val_str = match v {
+                            Value::String(s) => format!("\"{}\"", s),
+                            Value::Int(n) => n.to_string(),
+                            Value::Float(f) => format!("{}", f),
+                            Value::Bool(b) => b.to_string(),
+                            _ => v.to_display_string(),
+                        };
+                        format!("  {}: {}", k, val_str)
+                    })
+                    .collect();
+                format!("\n{}", lines.join("\n"))
+            }
+        }
         (Value::Null, _) => "null".to_string(),
         _ => value.to_display_string(),
     }
@@ -77,7 +96,9 @@ fn serialize_frontmatter(
         }
         if let Some(val) = data.get(name) {
             let formatted = format_yaml_value(val, &field_def.field_type);
-            if matches!(field_def.field_type, FieldType::StringArray) && !matches!(val, Value::List(items) if items.is_empty()) {
+            let is_multiline_list = matches!(field_def.field_type, FieldType::StringArray) && !matches!(val, Value::List(items) if items.is_empty());
+            let is_multiline_dict = matches!(field_def.field_type, FieldType::Dict) && !matches!(val, Value::Dict(m) if m.is_empty());
+            if is_multiline_list || is_multiline_dict {
                 fm_lines.push(format!("{}:{}", name, formatted));
             } else {
                 fm_lines.push(format!("{}: {}", name, formatted));
@@ -220,6 +241,23 @@ pub fn coerce_cli_value(raw: &str, field_type: &FieldType) -> crate::errors::Res
             }
         }
         FieldType::String => Ok(Value::String(raw.to_string())),
+        FieldType::Dict => {
+            match serde_yaml::from_str::<serde_yaml::Value>(raw) {
+                Ok(serde_yaml::Value::Mapping(m)) => {
+                    let mut dict = indexmap::IndexMap::new();
+                    for (k, v) in m {
+                        if let Some(key) = k.as_str() {
+                            let val = crate::model::yaml_to_value_pub(&v, None);
+                            dict.insert(key.to_string(), val);
+                        }
+                    }
+                    Ok(Value::Dict(dict))
+                }
+                _ => Err(MdqlError::General(format!(
+                    "Expected YAML mapping for dict field, got: {}", raw
+                ))),
+            }
+        }
     }
 }
 

@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "mdql"
-version = "0.4.1"
+version = "0.5.0"
 description = "MDQL — a queryable database where every entry is a markdown file"
 requires-python = ">=3.8"
 license = { file = "LICENSE.md" }

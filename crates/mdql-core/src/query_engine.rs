@@ -588,7 +588,17 @@ pub fn evaluate_expr(expr: &Expr, row: &Row) -> Value {
         Expr::Literal(SqlValue::String(s)) => Value::String(s.clone()),
         Expr::Literal(SqlValue::Null) => Value::Null,
         Expr::Literal(SqlValue::List(_)) => Value::Null,
-        Expr::Column(name) => row.get(name).cloned().unwrap_or(Value::Null),
+        Expr::Column(name) => {
+            if let Some(val) = row.get(name) {
+                return val.clone();
+            }
+            if let Some((dict_col, dict_key)) = name.split_once('.') {
+                if let Some(Value::Dict(map)) = row.get(dict_col) {
+                    return map.get(dict_key).cloned().unwrap_or(Value::Null);
+                }
+            }
+            Value::Null
+        }
         Expr::UnaryMinus(inner) => {
             match evaluate_expr(inner, row) {
                 Value::Int(n) => Value::Int(-n),
