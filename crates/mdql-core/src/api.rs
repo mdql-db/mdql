@@ -39,6 +39,31 @@ pub fn slugify(text: &str, max_length: usize) -> String {
     }
 }
 
+fn write_and_validate(
+    filepath: &Path,
+    content: &str,
+    old_content: Option<&str>,
+    schema: &Schema,
+    table_path: &Path,
+) -> crate::errors::Result<()> {
+    atomic_write(filepath, content)?;
+
+    let parsed = parse_file(filepath, Some(table_path), schema.rules.normalize_numbered_headings)?;
+    let errors = validate_file(&parsed, schema);
+
+    if !errors.is_empty() {
+        if let Some(old) = old_content {
+            atomic_write(filepath, old)?;
+        } else {
+            let _ = std::fs::remove_file(filepath);
+        }
+        let msgs: Vec<String> = errors.iter().map(|e| e.message.clone()).collect();
+        return Err(MdqlError::General(format!("Validation failed: {}", msgs.join("; "))));
+    }
+
+    Ok(())
+}
+
 fn format_yaml_value(value: &Value, field_type: &FieldType) -> String {
     match (value, field_type) {
         (Value::String(s), FieldType::String) => format!("\"{}\"", s),
@@ -357,28 +382,7 @@ impl Table {
             content.push_str(&serialize_body(data, &self.schema));
         }
 
-        atomic_write(&filepath, &content)?;
-
-        // Validate — roll back on failure
-        let parsed = parse_file(
-            &filepath,
-            Some(&self.path),
-            self.schema.rules.normalize_numbered_headings,
-        )?;
-        let errors = validate_file(&parsed, &self.schema);
-
-        if !errors.is_empty() {
-            if let Some(ref old) = old_content {
-                atomic_write(&filepath, old)?;
-            } else {
-                let _ = std::fs::remove_file(&filepath);
-            }
-            let msgs: Vec<String> = errors.iter().map(|e| e.message.clone()).collect();
-            return Err(MdqlError::General(format!(
-                "Validation failed: {}",
-                msgs.join("; ")
-            )));
-        }
+        write_and_validate(&filepath, &content, old_content.as_deref(), &self.schema, &self.path)?;
 
         self.cache.lock().unwrap().invalidate_all();
         Ok(filepath)
@@ -453,24 +457,7 @@ impl Table {
             content.push_str(&old_body);
         }
 
-        atomic_write(&filepath, &content)?;
-
-        // Validate — roll back
-        let parsed = parse_file(
-            &filepath,
-            Some(&self.path),
-            self.schema.rules.normalize_numbered_headings,
-        )?;
-        let errors = validate_file(&parsed, &self.schema);
-
-        if !errors.is_empty() {
-            atomic_write(&filepath, &old_content)?;
-            let msgs: Vec<String> = errors.iter().map(|e| e.message.clone()).collect();
-            return Err(MdqlError::General(format!(
-                "Validation failed: {}",
-                msgs.join("; ")
-            )));
-        }
+        write_and_validate(&filepath, &content, Some(&old_content), &self.schema, &self.path)?;
 
         self.cache.lock().unwrap().invalidate_all();
         Ok(filepath)
