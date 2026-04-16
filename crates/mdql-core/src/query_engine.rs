@@ -167,9 +167,12 @@ fn execute_with_fts(
             _ => unreachable!(),
         };
 
-        // Compute expression columns first, then retain only requested columns
+        // Compute expression columns first, then retain only requested columns.
+        // Skip if aggregation already computed them (re-evaluating would lose
+        // columns that only existed in pre-aggregation rows, e.g. dict fields).
         let has_expr_cols = named_exprs.iter().any(|e| matches!(e, SelectExpr::Expr { .. }));
-        if has_expr_cols {
+        let already_aggregated = has_aggregates || query.group_by.is_some();
+        if has_expr_cols && !already_aggregated {
             for row in &mut result {
                 for expr in named_exprs {
                     if let SelectExpr::Expr { expr: e, alias } = expr {
@@ -1468,5 +1471,70 @@ mod tests {
         } else {
             panic!("Expected Select");
         }
+    }
+
+    #[test]
+    fn test_dateadd_with_dict_in_group_by() {
+        // Simulate a joined row with a dict field, then GROUP BY + DateAdd expr
+        use indexmap::IndexMap;
+        let mut params = IndexMap::new();
+        params.insert("exit_days".to_string(), Value::Int(21));
+
+        let rows = vec![
+            Row::from([
+                ("o.token".into(), Value::String("BTC".into())),
+                ("o.event_date".into(), Value::Date(
+                    chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()
+                )),
+                ("o.size".into(), Value::Int(100)),
+                ("s.params".into(), Value::Dict(params.clone())),
+            ]),
+            Row::from([
+                ("o.token".into(), Value::String("BTC".into())),
+                ("o.event_date".into(), Value::Date(
+                    chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()
+                )),
+                ("o.size".into(), Value::Int(50)),
+                ("s.params".into(), Value::Dict(params.clone())),
+            ]),
+        ];
+
+        let q = SelectQuery {
+            columns: ColumnList::Named(vec![
+                SelectExpr::Column("o.token".into()),
+                SelectExpr::Column("o.event_date".into()),
+                SelectExpr::Expr {
+                    expr: Expr::DateAdd {
+                        date: Box::new(Expr::Column("o.event_date".into())),
+                        days: Box::new(Expr::Column("s.params.exit_days".into())),
+                    },
+                    alias: Some("exit_date".into()),
+                },
+                SelectExpr::Aggregate {
+                    func: AggFunc::Sum,
+                    arg: "o.size".into(),
+                    arg_expr: Some(Expr::Column("o.size".into())),
+                    alias: Some("total".into()),
+                },
+            ]),
+            table: "orders".into(),
+            table_alias: None,
+            joins: vec![],
+            where_clause: None,
+            group_by: Some(vec!["o.token".into(), "o.event_date".into()]),
+            having: None,
+            order_by: None,
+            limit: None,
+        };
+
+        let (rows, cols) = execute(&q, &rows, None).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert!(cols.contains(&"exit_date".to_string()));
+        assert_eq!(rows[0]["total"], Value::Float(150.0));
+        // The key test: exit_date should be 2026-01-22, not Null
+        assert_eq!(
+            rows[0]["exit_date"],
+            Value::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 22).unwrap())
+        );
     }
 }
