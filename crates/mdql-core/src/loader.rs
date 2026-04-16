@@ -155,5 +155,123 @@ pub fn load_database(
     let fk_errors = crate::validator::validate_foreign_keys(&db_config, &tables);
     all_errors.extend(fk_errors);
 
+    // Materialize views
+    for view_def in &db_config.views {
+        if tables.contains_key(&view_def.name) {
+            all_errors.push(ValidationError {
+                file_path: MDQL_FILENAME.to_string(),
+                error_type: "view_error".to_string(),
+                field: Some(view_def.name.clone()),
+                message: format!(
+                    "View '{}' conflicts with existing table name",
+                    view_def.name
+                ),
+                line_number: None,
+            });
+            continue;
+        }
+
+        match materialize_view(view_def, &tables) {
+            Ok((schema, rows)) => {
+                tables.insert(view_def.name.clone(), (schema, rows));
+            }
+            Err(e) => {
+                all_errors.push(ValidationError {
+                    file_path: MDQL_FILENAME.to_string(),
+                    error_type: "view_error".to_string(),
+                    field: Some(view_def.name.clone()),
+                    message: format!("View '{}': {}", view_def.name, e),
+                    line_number: None,
+                });
+            }
+        }
+    }
+
     Ok((db_config, tables, all_errors))
+}
+
+pub fn materialize_view(
+    view_def: &crate::database::ViewDef,
+    tables: &HashMap<String, (Schema, Vec<crate::model::Row>)>,
+) -> crate::errors::Result<(Schema, Vec<crate::model::Row>)> {
+    use crate::query_parser::{Statement, parse_query};
+
+    let stmt = parse_query(&view_def.query)?;
+    let select = match stmt {
+        Statement::Select(q) => q,
+        _ => {
+            return Err(crate::errors::MdqlError::QueryExecution(
+                "View query must be a SELECT statement".into(),
+            ))
+        }
+    };
+
+    let (rows, columns) = if !select.joins.is_empty() {
+        crate::query_engine::execute_join_query(&select, tables)?
+    } else {
+        let (schema, table_rows) = tables.get(&select.table).ok_or_else(|| {
+            crate::errors::MdqlError::QueryExecution(format!(
+                "table '{}' not found in database",
+                select.table
+            ))
+        })?;
+        crate::query_engine::execute_query(&select, table_rows, schema)?
+    };
+
+    let schema = build_view_schema(&view_def.name, &columns, &rows);
+    Ok((schema, rows))
+}
+
+fn build_view_schema(
+    name: &str,
+    columns: &[String],
+    rows: &[crate::model::Row],
+) -> Schema {
+    use crate::schema::*;
+    use indexmap::IndexMap;
+
+    let mut frontmatter = IndexMap::new();
+    for col in columns {
+        if col == "path" || col == "h1" || col == "created" || col == "modified" {
+            continue;
+        }
+        let field_type = rows
+            .iter()
+            .find_map(|r| r.get(col))
+            .map(|v| match v {
+                crate::model::Value::Int(_) => FieldType::Int,
+                crate::model::Value::Float(_) => FieldType::Float,
+                crate::model::Value::Bool(_) => FieldType::Bool,
+                crate::model::Value::Date(_) => FieldType::Date,
+                crate::model::Value::DateTime(_) => FieldType::DateTime,
+                crate::model::Value::List(_) => FieldType::StringArray,
+                crate::model::Value::Dict(_) => FieldType::Dict,
+                _ => FieldType::String,
+            })
+            .unwrap_or(FieldType::String);
+
+        frontmatter.insert(
+            col.clone(),
+            FieldDef {
+                field_type,
+                required: false,
+                enum_values: None,
+            },
+        );
+    }
+
+    Schema {
+        table: name.to_string(),
+        primary_key: "path".to_string(),
+        frontmatter,
+        h1_required: false,
+        h1_must_equal_frontmatter: None,
+        sections: IndexMap::new(),
+        rules: Rules {
+            reject_unknown_frontmatter: false,
+            reject_unknown_sections: false,
+            reject_duplicate_sections: false,
+            normalize_numbered_headings: false,
+        },
+    }
 }

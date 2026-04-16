@@ -154,6 +154,12 @@ name: zunid
 foreign_keys:
   - from: backtests.strategy
     to: strategies.path
+
+views:
+  - name: live_strategies
+    query: "SELECT * FROM strategies WHERE status = 'LIVE'"
+  - name: strategy_performance
+    query: "SELECT s.title, b.sharpe FROM strategies s JOIN backtests b ON b.strategy = s.path"
 ---
 
 # zunid
@@ -187,6 +193,56 @@ Foreign key violations:
 ```
 
 NULL FK values are not violations — a backtest with no strategy set is valid.
+
+## Views
+
+Views are named queries that act as virtual tables. Define them with standard SQL, query them like any other table.
+
+### Creating and dropping views
+
+```bash
+# Create a view (persisted in _mdql.md)
+mdql query examples/ "CREATE VIEW live AS SELECT * FROM strategies WHERE status = 'LIVE'"
+
+# Query the view like a regular table
+mdql query examples/ "SELECT title, mechanism FROM live ORDER BY mechanism DESC"
+
+# Drop a view
+mdql query examples/ "DROP VIEW live"
+```
+
+Views require a database directory (not a single table folder). They are stored in the `views:` section of the database-level `_mdql.md` and re-executed dynamically on each query — no cached data on disk.
+
+### Restrictions
+
+- **Read-only.** `INSERT INTO`, `UPDATE`, and `DELETE FROM` a view return a clear error.
+- **No view-to-view references.** A view query cannot reference another view.
+- **Name conflicts.** A view cannot have the same name as a physical table.
+
+### Python API
+
+```python
+db = Database("examples/")
+
+# Create and drop views
+db.execute("CREATE VIEW live AS SELECT * FROM strategies WHERE status = 'LIVE'")
+db.execute("DROP VIEW live")
+
+# Query a view (same as querying a table)
+rows, columns = db.query("SELECT * FROM live")
+
+# List view names
+db.view_names  # ['live', ...]
+```
+
+### Schema display
+
+```bash
+mdql schema examples/
+# ...
+# Views:
+#   live = SELECT * FROM strategies WHERE status = 'LIVE'
+```
 
 ## Python API
 
@@ -345,7 +401,7 @@ All writes are validated against the schema and rolled back on failure. The `cre
 
 ### `mdql query <folder> "<sql>"`
 
-Run SQL against a table or database. Supports `SELECT`, `INSERT INTO`, `UPDATE SET`, `DELETE FROM`, `ALTER TABLE`, and `JOIN`.
+Run SQL against a table or database. Supports `SELECT`, `INSERT INTO`, `UPDATE SET`, `DELETE FROM`, `ALTER TABLE`, `JOIN`, `CREATE VIEW`, and `DROP VIEW`.
 
 ```bash
 # Filter and sort

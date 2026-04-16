@@ -1,6 +1,6 @@
 [package]
 name = "mdql-python"
-version = "0.5.7"
+version = "0.5.8"
 edition = "2021"
 publish = false
 license-file = "../LICENSE.md"
@@ -10,7 +10,7 @@ name = "mdql"
 crate-type = ["cdylib"]
 
 [dependencies]
-mdql-core = { path = "../crates/mdql-core", version = "0.5.7" }
+mdql-core = { path = "../crates/mdql-core", version = "0.5.8" }
 pyo3 = { version = "0.23", features = ["extension-module"] }
 chrono = "0.4"
 serde_yaml = "0.9"

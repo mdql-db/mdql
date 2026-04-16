@@ -517,6 +517,11 @@ impl Table {
                     count
                 ))
             }
+            Statement::CreateView(_) | Statement::DropView(_) => {
+                Err(MdqlError::QueryExecution(
+                    "CREATE VIEW and DROP VIEW require a database directory, not a single table".into(),
+                ))
+            }
         }
     }
 

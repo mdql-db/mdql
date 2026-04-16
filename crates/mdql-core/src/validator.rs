@@ -652,6 +652,7 @@ mod tests {
                 to_table: "strategies".into(),
                 to_column: "path".into(),
             }],
+            views: vec![],
         }
     }
 
@@ -704,6 +705,7 @@ mod tests {
                 to_table: "nonexistent_table".into(),
                 to_column: "path".into(),
             }],
+            views: vec![],
         };
         let errors = validate_foreign_keys(&config, &tables);
         assert_eq!(errors.len(), 1);
@@ -713,7 +715,6 @@ mod tests {
     #[test]
     fn test_fk_string_array_valid() {
         let mut tables = make_fk_tables();
-        // Add a row with a string[] FK where both values exist
         let array_row = Row::from([
             ("path".into(), Value::String("bt-multi.md".into())),
             ("strategy".into(), Value::List(vec![
@@ -731,6 +732,7 @@ mod tests {
                 to_table: "strategies".into(),
                 to_column: "path".into(),
             }],
+            views: vec![],
         };
         let errors = validate_foreign_keys(&config, &tables);
         assert!(errors.is_empty());
@@ -756,6 +758,7 @@ mod tests {
                 to_table: "strategies".into(),
                 to_column: "path".into(),
             }],
+            views: vec![],
         };
         let errors = validate_foreign_keys(&config, &tables);
         assert_eq!(errors.len(), 1);

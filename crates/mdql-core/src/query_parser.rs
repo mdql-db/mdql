@@ -16,6 +16,7 @@ static KEYWORDS: &[&str] = &[
     "ALTER", "TABLE", "RENAME", "FIELD", "TO", "DROP", "MERGE", "FIELDS",
     "CASE", "WHEN", "THEN", "ELSE", "END",
     "INTERVAL", "DAY", "DAYS", "CURRENT_DATE", "CURRENT_TIMESTAMP", "DATEDIFF",
+    "CREATE", "VIEW", "CASCADE", "RESTRICT",
 ];
 
 static AGG_FUNCS: &[&str] = &["COUNT", "SUM", "AVG", "MIN", "MAX"];
@@ -152,8 +153,10 @@ impl Parser {
             ("keyword", "UPDATE") => Ok(Statement::Update(self.parse_update()?)),
             ("keyword", "DELETE") => Ok(Statement::Delete(self.parse_delete()?)),
             ("keyword", "ALTER") => self.parse_alter(),
+            ("keyword", "CREATE") => self.parse_create_view(),
+            ("keyword", "DROP") => self.parse_drop_view(),
             _ => Err(MdqlError::QueryParse(format!(
-                "Expected SELECT, INSERT, UPDATE, DELETE, or ALTER, got '{}'",
+                "Expected SELECT, INSERT, UPDATE, DELETE, ALTER, CREATE, or DROP, got '{}'",
                 t.raw
             ))),
         }
@@ -388,6 +391,42 @@ impl Parser {
                 t.raw
             ))),
         }
+    }
+
+    fn parse_create_view(&mut self) -> Result<Statement, MdqlError> {
+        self.expect("keyword", Some("CREATE"))?;
+        self.expect("keyword", Some("VIEW"))?;
+        let view_name = self.parse_ident()?;
+
+        let columns = if self.peek().map_or(false, |t| t.token_type == "op" && t.value == "(") {
+            self.advance();
+            let mut cols = vec![self.parse_ident()?];
+            while self.peek().map_or(false, |t| t.token_type == "op" && t.value == ",") {
+                self.advance();
+                cols.push(self.parse_ident()?);
+            }
+            self.expect("op", Some(")"))?;
+            Some(cols)
+        } else {
+            None
+        };
+
+        self.expect("keyword", Some("AS"))?;
+        let query = Box::new(self.parse_select()?);
+
+        Ok(Statement::CreateView(CreateViewQuery {
+            view_name,
+            columns,
+            query,
+        }))
+    }
+
+    fn parse_drop_view(&mut self) -> Result<Statement, MdqlError> {
+        self.expect("keyword", Some("DROP"))?;
+        self.expect("keyword", Some("VIEW"))?;
+        let view_name = self.parse_ident()?;
+        self.expect_end()?;
+        Ok(Statement::DropView(DropViewQuery { view_name }))
     }
 
     fn parse_string_or_ident(&mut self) -> Result<String, MdqlError> {
@@ -922,6 +961,7 @@ impl Parser {
             | "CASE" | "WHEN" | "THEN" | "ELSE" | "END"
             | "HAVING" | "INTERVAL" | "DAY" | "DAYS"
             | "CURRENT_DATE" | "CURRENT_TIMESTAMP" | "DATEDIFF"
+            | "CREATE" | "VIEW" | "CASCADE" | "RESTRICT"
         )
     }
 
@@ -1577,6 +1617,50 @@ mod tests {
             }
         } else {
             panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_create_view() {
+        let stmt = parse_query("CREATE VIEW live AS SELECT * FROM strategies WHERE status = 'LIVE'").unwrap();
+        if let Statement::CreateView(cv) = stmt {
+            assert_eq!(cv.view_name, "live");
+            assert!(cv.columns.is_none());
+            assert_eq!(cv.query.table, "strategies");
+            assert!(cv.query.where_clause.is_some());
+        } else {
+            panic!("Expected CreateView, got {:?}", stmt);
+        }
+    }
+
+    #[test]
+    fn test_create_view_with_columns() {
+        let stmt = parse_query("CREATE VIEW v1 (a, b) AS SELECT title, status FROM t").unwrap();
+        if let Statement::CreateView(cv) = stmt {
+            assert_eq!(cv.view_name, "v1");
+            assert_eq!(cv.columns, Some(vec!["a".into(), "b".into()]));
+        } else {
+            panic!("Expected CreateView");
+        }
+    }
+
+    #[test]
+    fn test_drop_view() {
+        let stmt = parse_query("DROP VIEW live").unwrap();
+        if let Statement::DropView(dv) = stmt {
+            assert_eq!(dv.view_name, "live");
+        } else {
+            panic!("Expected DropView, got {:?}", stmt);
+        }
+    }
+
+    #[test]
+    fn test_create_view_case_insensitive() {
+        let stmt = parse_query("create view My_View as select * from t").unwrap();
+        if let Statement::CreateView(cv) = stmt {
+            assert_eq!(cv.view_name, "My_View");
+        } else {
+            panic!("Expected CreateView");
         }
     }
 }

@@ -208,6 +208,18 @@ pub struct AlterMergeFieldsQuery {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct CreateViewQuery {
+    pub view_name: String,
+    pub columns: Option<Vec<String>>,
+    pub query: Box<SelectQuery>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DropViewQuery {
+    pub view_name: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
     Select(SelectQuery),
     Insert(InsertQuery),
@@ -216,6 +228,8 @@ pub enum Statement {
     AlterRename(AlterRenameFieldQuery),
     AlterDrop(AlterDropFieldQuery),
     AlterMerge(AlterMergeFieldsQuery),
+    CreateView(CreateViewQuery),
+    DropView(DropViewQuery),
 }
 
 impl Statement {
@@ -228,6 +242,8 @@ impl Statement {
             Statement::AlterRename(q) => &q.table,
             Statement::AlterDrop(q) => &q.table,
             Statement::AlterMerge(q) => &q.table,
+            Statement::CreateView(q) => &q.view_name,
+            Statement::DropView(q) => &q.view_name,
         }
     }
 }

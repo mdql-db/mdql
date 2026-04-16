@@ -435,6 +435,14 @@ fn cmd_schema(folder: &std::path::Path) -> Result<(), MdqlError> {
                 );
             }
         }
+
+        if !db_config.views.is_empty() {
+            println!();
+            println!("Views:");
+            for v in &db_config.views {
+                println!("  {} = {}", v.name, v.query);
+            }
+        }
     } else {
         let s = load_schema(folder)?;
         print_table_schema(&s);
@@ -683,6 +691,13 @@ fn collect_schema_info(db_path: &std::path::Path, is_db: bool) -> (Vec<String>, 
                             column_names.push(name.clone());
                         }
                     }
+                }
+            }
+        }
+        if let Ok(config) = mdql_core::database::load_database_config(db_path) {
+            for v in &config.views {
+                if !table_names.contains(&v.name) {
+                    table_names.push(v.name.clone());
                 }
             }
         }

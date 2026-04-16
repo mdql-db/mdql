@@ -413,6 +413,24 @@ struct PyAlterMergeFieldsQuery {
     into: String,
 }
 
+#[pyclass(name = "CreateViewQuery")]
+#[derive(Clone)]
+struct PyCreateViewQuery {
+    #[pyo3(get)]
+    view_name: String,
+    #[pyo3(get)]
+    columns: Option<Vec<String>>,
+    #[pyo3(get)]
+    query: String,
+}
+
+#[pyclass(name = "DropViewQuery")]
+#[derive(Clone)]
+struct PyDropViewQuery {
+    #[pyo3(get)]
+    view_name: String,
+}
+
 fn where_clause_to_py(py: Python<'_>, wc: &qp::WhereClause) -> PyObject {
     match wc {
         qp::WhereClause::Comparison(cmp) => {
@@ -693,6 +711,13 @@ impl PyDatabase {
         Ok(PyTable { inner: py_table })
     }
 
+    #[getter]
+    fn view_names(&self) -> PyResult<Vec<String>> {
+        let config = mdql_core::database::load_database_config(&self.inner.path)
+            .map_err(mdql_to_py_err)?;
+        Ok(config.views.iter().map(|v| v.name.clone()).collect())
+    }
+
     /// Execute a SQL SELECT query (including JOINs) across all tables.
     /// Returns (rows: list[dict], columns: list[str]).
     fn query(&self, py: Python<'_>, sql: &str) -> PyResult<(PyObject, PyObject)> {
@@ -727,6 +752,20 @@ impl PyDatabase {
             py_rows.into_pyobject(py)?.into_any().unbind(),
             py_cols.into_pyobject(py)?.into_any().unbind(),
         ))
+    }
+
+    /// Execute a DDL statement (CREATE VIEW, DROP VIEW) against the database.
+    fn execute(&mut self, sql: &str) -> PyResult<String> {
+        let (result, _errors) = mdql_core::executor::execute(&self.inner.path, sql)
+            .map_err(mdql_to_py_err)?;
+        match result {
+            mdql_core::executor::QueryResult::Message(msg) => Ok(msg),
+            mdql_core::executor::QueryResult::Rows { .. } => {
+                Err(pyo3::exceptions::PyValueError::new_err(
+                    "Use query() for SELECT statements",
+                ))
+            }
+        }
     }
 }
 
@@ -981,6 +1020,28 @@ fn parse_query(py: Python<'_>, sql: &str) -> PyResult<PyObject> {
             })?;
             Ok(pyq.into_pyobject(py)?.into_any().unbind())
         }
+        qp::Statement::CreateView(q) => {
+            let query_sql = format!("{}", sql.trim_start_matches("CREATE").trim_start_matches("create")
+                .trim_start()
+                .trim_start_matches("VIEW").trim_start_matches("view")
+                .trim_start()
+                .trim_start_matches(&q.view_name)
+                .trim_start());
+            let query_str = query_sql.strip_prefix("AS").or_else(|| query_sql.strip_prefix("as"))
+                .unwrap_or(&query_sql).trim().to_string();
+            let pyq = Py::new(py, PyCreateViewQuery {
+                view_name: q.view_name,
+                columns: q.columns,
+                query: query_str,
+            })?;
+            Ok(pyq.into_pyobject(py)?.into_any().unbind())
+        }
+        qp::Statement::DropView(q) => {
+            let pyq = Py::new(py, PyDropViewQuery {
+                view_name: q.view_name,
+            })?;
+            Ok(pyq.into_pyobject(py)?.into_any().unbind())
+        }
     }
 }
 
@@ -1196,6 +1257,8 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyAlterRenameFieldQuery>()?;
     m.add_class::<PyAlterDropFieldQuery>()?;
     m.add_class::<PyAlterMergeFieldsQuery>()?;
+    m.add_class::<PyCreateViewQuery>()?;
+    m.add_class::<PyDropViewQuery>()?;
 
     // Functions
     m.add_function(wrap_pyfunction!(parse_file, m)?)?;

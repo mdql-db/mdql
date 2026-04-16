@@ -15,9 +15,16 @@ pub struct ForeignKey {
 }
 
 #[derive(Debug, Clone)]
+pub struct ViewDef {
+    pub name: String,
+    pub query: String,
+}
+
+#[derive(Debug, Clone)]
 pub struct DatabaseConfig {
     pub name: String,
     pub foreign_keys: Vec<ForeignKey>,
+    pub views: Vec<ViewDef>,
 }
 
 pub fn is_database_dir(folder: &Path) -> bool {
@@ -130,8 +137,102 @@ pub fn load_database_config(db_dir: &Path) -> crate::errors::Result<DatabaseConf
         }
     }
 
+    let mut views = Vec::new();
+    if let Some(view_list) = fm_map.get(&serde_yaml::Value::String("views".into())) {
+        if let Some(seq) = view_list.as_sequence() {
+            for view_def in seq {
+                let view_map = view_def.as_mapping().ok_or_else(|| {
+                    MdqlError::DatabaseConfig(format!(
+                        "{}: each view must be a mapping with 'name' and 'query'",
+                        MDQL_FILENAME
+                    ))
+                })?;
+
+                let view_name = view_map
+                    .get(&serde_yaml::Value::String("name".into()))
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| {
+                        MdqlError::DatabaseConfig(format!(
+                            "{}: each view must have a 'name' string",
+                            MDQL_FILENAME
+                        ))
+                    })?
+                    .to_string();
+
+                let view_query = view_map
+                    .get(&serde_yaml::Value::String("query".into()))
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| {
+                        MdqlError::DatabaseConfig(format!(
+                            "{}: view '{}' must have a 'query' string",
+                            MDQL_FILENAME, view_name
+                        ))
+                    })?
+                    .to_string();
+
+                views.push(ViewDef {
+                    name: view_name,
+                    query: view_query,
+                });
+            }
+        }
+    }
+
     Ok(DatabaseConfig {
         name,
         foreign_keys: fks,
+        views,
     })
+}
+
+pub fn save_database_config(db_dir: &Path, config: &DatabaseConfig) -> crate::errors::Result<()> {
+    let db_path = db_dir.join(MDQL_FILENAME);
+    let text = std::fs::read_to_string(&db_path)?;
+
+    let (_before_fm, fm_text, after_fm) = if let Some(rest) = text.strip_prefix("---\n") {
+        if let Some((fm, after)) = rest.split_once("\n---") {
+            ("---\n".to_string(), fm.to_string(), format!("\n---{}", after))
+        } else {
+            return Err(MdqlError::DatabaseConfig("Malformed frontmatter".into()));
+        }
+    } else {
+        return Err(MdqlError::DatabaseConfig("No frontmatter found".into()));
+    };
+
+    let mut fm: serde_yaml::Value = serde_yaml::from_str(&fm_text)
+        .map_err(|e| MdqlError::DatabaseConfig(format!("YAML parse error: {}", e)))?;
+
+    let fm_map = fm.as_mapping_mut().ok_or_else(|| {
+        MdqlError::DatabaseConfig("Frontmatter is not a mapping".into())
+    })?;
+
+    let views_key = serde_yaml::Value::String("views".into());
+    if config.views.is_empty() {
+        fm_map.remove(&views_key);
+    } else {
+        let views_seq: Vec<serde_yaml::Value> = config
+            .views
+            .iter()
+            .map(|v| {
+                let mut m = serde_yaml::Mapping::new();
+                m.insert(
+                    serde_yaml::Value::String("name".into()),
+                    serde_yaml::Value::String(v.name.clone()),
+                );
+                m.insert(
+                    serde_yaml::Value::String("query".into()),
+                    serde_yaml::Value::String(v.query.clone()),
+                );
+                serde_yaml::Value::Mapping(m)
+            })
+            .collect();
+        fm_map.insert(views_key, serde_yaml::Value::Sequence(views_seq));
+    }
+
+    let new_fm_text = serde_yaml::to_string(&fm)
+        .map_err(|e| MdqlError::DatabaseConfig(format!("YAML serialize error: {}", e)))?;
+
+    let new_content = format!("---\n{}---{}", new_fm_text, &after_fm[4..]);
+    crate::txn::atomic_write(&db_path, &new_content)?;
+    Ok(())
 }
