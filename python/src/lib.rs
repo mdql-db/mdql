@@ -6,14 +6,27 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use pyo3::exceptions::{PyRuntimeError, PyValueError};
+use pyo3::exceptions::{PyFileNotFoundError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 
+use mdql_core::errors::MdqlError;
 use mdql_core::model::Value;
 use mdql_core::query_parser as qp;
 
 // ── Helpers ──────────────────────────────────────────────────────────────
+
+fn mdql_to_py_err(e: MdqlError) -> PyErr {
+    match &e {
+        MdqlError::SchemaNotFound(_) => PyFileNotFoundError::new_err(e.to_string()),
+        MdqlError::SchemaInvalid(_) => PyValueError::new_err(e.to_string()),
+        MdqlError::QueryParse(_) => PyRuntimeError::new_err(e.to_string()),
+        MdqlError::QueryExecution(_) => PyRuntimeError::new_err(e.to_string()),
+        MdqlError::DatabaseConfig(_) => PyValueError::new_err(e.to_string()),
+        MdqlError::Io(_) => PyRuntimeError::new_err(e.to_string()),
+        _ => PyRuntimeError::new_err(e.to_string()),
+    }
+}
 
 fn value_to_py(py: Python<'_>, val: &Value) -> PyObject {
     match val {
@@ -458,7 +471,7 @@ impl PyTable {
     #[new]
     fn new(path: &str) -> PyResult<Self> {
         let table = mdql_core::api::Table::new(PathBuf::from(path))
-            .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+            .map_err(mdql_to_py_err)?;
         Ok(PyTable { inner: table })
     }
 
@@ -487,7 +500,7 @@ impl PyTable {
         let (rows, errors) = self
             .inner
             .load()
-            .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+            .map_err(mdql_to_py_err)?;
 
         let filtered = if let Some(where_val) = r#where {
             if let Ok(where_dict) = where_val.downcast::<PyDict>() {
@@ -504,7 +517,7 @@ impl PyTable {
                 // String → parse as SQL WHERE clause
                 let fake_sql = format!("SELECT * FROM _t WHERE {}", where_str);
                 let stmt = qp::parse_query(&fake_sql)
-                    .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+                    .map_err(mdql_to_py_err)?;
                 let clause = match stmt {
                     qp::Statement::Select(q) => q.where_clause.ok_or_else(|| {
                         PyValueError::new_err("Could not parse WHERE clause")
@@ -538,7 +551,7 @@ impl PyTable {
         let errors = self
             .inner
             .validate()
-            .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+            .map_err(mdql_to_py_err)?;
         let py_errors = PyList::new(py, errors.iter().map(|e| e.to_string()))?;
         Ok(py_errors.into_pyobject(py)?.into_any().unbind())
     }
@@ -555,7 +568,7 @@ impl PyTable {
         let path = self
             .inner
             .insert(&data, body, filename, replace)
-            .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+            .map_err(mdql_to_py_err)?;
         Ok(path.to_string_lossy().to_string())
     }
 
@@ -569,7 +582,7 @@ impl PyTable {
         let data = dict_to_map(fields)?;
         let path = self.inner
             .update(filename, &data, body)
-            .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+            .map_err(mdql_to_py_err)?;
         Ok(path.to_string_lossy().to_string())
     }
 
@@ -585,7 +598,10 @@ impl PyTable {
         for filename in &filenames {
             let path = self.inner
                 .update(filename, &data, None)
-                .map_err(|e| PyRuntimeError::new_err(format!("{}: {}", filename, e)))?;
+                .map_err(|e| {
+                    let msg = format!("{}: {}", filename, e);
+                    PyRuntimeError::new_err(msg)
+                })?;
             updated.push(path.to_string_lossy().to_string());
         }
         Ok(updated)
@@ -594,14 +610,14 @@ impl PyTable {
     fn delete(&self, filename: &str) -> PyResult<String> {
         let path = self.inner
             .delete(filename)
-            .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+            .map_err(mdql_to_py_err)?;
         Ok(path.to_string_lossy().to_string())
     }
 
     fn execute_sql(&mut self, sql: &str) -> PyResult<String> {
         self.inner
             .execute_sql(sql)
-            .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+            .map_err(mdql_to_py_err)
     }
 
     /// Execute a SELECT query and return structured results.
@@ -609,7 +625,7 @@ impl PyTable {
     fn query(&mut self, py: Python<'_>, sql: &str) -> PyResult<(PyObject, PyObject)> {
         let (result_rows, columns) = self.inner
             .query_sql(sql)
-            .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+            .map_err(mdql_to_py_err)?;
 
         let py_rows = PyList::new(
             py,
@@ -625,19 +641,19 @@ impl PyTable {
     fn rename_field(&mut self, old_name: &str, new_name: &str) -> PyResult<usize> {
         self.inner
             .rename_field(old_name, new_name)
-            .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+            .map_err(mdql_to_py_err)
     }
 
     fn drop_field(&mut self, name: &str) -> PyResult<usize> {
         self.inner
             .drop_field(name)
-            .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+            .map_err(mdql_to_py_err)
     }
 
     fn merge_fields(&mut self, sources: Vec<String>, into: &str) -> PyResult<usize> {
         self.inner
             .merge_fields(&sources, into)
-            .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+            .map_err(mdql_to_py_err)
     }
 }
 
@@ -653,7 +669,7 @@ impl PyDatabase {
     #[new]
     fn new(path: &str) -> PyResult<Self> {
         let db = mdql_core::api::Database::new(PathBuf::from(path))
-            .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+            .map_err(mdql_to_py_err)?;
         Ok(PyDatabase { inner: db })
     }
 
@@ -673,7 +689,7 @@ impl PyDatabase {
             .table(name)
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
         let py_table = mdql_core::api::Table::new(&table.path)
-            .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+            .map_err(mdql_to_py_err)?;
         Ok(PyTable { inner: py_table })
     }
 
@@ -681,7 +697,7 @@ impl PyDatabase {
     /// Returns (rows: list[dict], columns: list[str]).
     fn query(&self, py: Python<'_>, sql: &str) -> PyResult<(PyObject, PyObject)> {
         let stmt = qp::parse_query(sql)
-            .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+            .map_err(mdql_to_py_err)?;
 
         let select = match stmt {
             qp::Statement::Select(q) => q,
@@ -690,7 +706,7 @@ impl PyDatabase {
 
         let (_config, tables, _errors) =
             mdql_core::loader::load_database(&self.inner.path)
-                .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+                .map_err(mdql_to_py_err)?;
 
         let (result_rows, columns) = if !select.joins.is_empty() {
             mdql_core::query_engine::execute_join_query(&select, &tables)
@@ -700,7 +716,7 @@ impl PyDatabase {
                 .ok_or_else(|| PyValueError::new_err(format!("Table '{}' not found", select.table)))?;
             mdql_core::query_engine::execute_query(&select, rows, schema)
         }
-        .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+        .map_err(mdql_to_py_err)?;
 
         let py_rows = PyList::new(
             py,
@@ -729,7 +745,7 @@ impl PyTableTransaction {
             std::path::Path::new(folder),
             operation,
         )
-        .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+        .map_err(mdql_to_py_err)?;
         Ok(PyTableTransaction { inner: Some(txn) })
     }
 
@@ -738,7 +754,7 @@ impl PyTableTransaction {
             .as_mut()
             .ok_or_else(|| PyRuntimeError::new_err("Transaction already committed"))?
             .backup(std::path::Path::new(path))
-            .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+            .map_err(mdql_to_py_err)
     }
 
     fn record_create(&mut self, path: &str) -> PyResult<()> {
@@ -746,7 +762,7 @@ impl PyTableTransaction {
             .as_mut()
             .ok_or_else(|| PyRuntimeError::new_err("Transaction already committed"))?
             .record_create(std::path::Path::new(path))
-            .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+            .map_err(mdql_to_py_err)
     }
 
     fn record_delete(&mut self, path: &str, content: &str) -> PyResult<()> {
@@ -754,7 +770,7 @@ impl PyTableTransaction {
             .as_mut()
             .ok_or_else(|| PyRuntimeError::new_err("Transaction already committed"))?
             .record_delete(std::path::Path::new(path), content)
-            .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+            .map_err(mdql_to_py_err)
     }
 
     fn commit(&mut self) -> PyResult<()> {
@@ -762,7 +778,7 @@ impl PyTableTransaction {
             .take()
             .ok_or_else(|| PyRuntimeError::new_err("Transaction already committed"))?
             .commit()
-            .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+            .map_err(mdql_to_py_err)
     }
 
     fn rollback(&self) -> PyResult<()> {
@@ -770,7 +786,7 @@ impl PyTableTransaction {
             .as_ref()
             .ok_or_else(|| PyRuntimeError::new_err("Transaction already committed"))?
             .rollback()
-            .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+            .map_err(mdql_to_py_err)
     }
 }
 
@@ -827,7 +843,7 @@ fn parse_file(py: Python<'_>, path: &str, relative_to: Option<&str>, normalize: 
     let p = std::path::Path::new(path);
     let rel = relative_to.map(std::path::Path::new);
     let parsed = mdql_core::parser::parse_file(p, rel, normalize)
-        .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+        .map_err(mdql_to_py_err)?;
 
     let dict = PyDict::new(py);
     dict.set_item("path", &parsed.path)?;
@@ -861,7 +877,7 @@ fn normalize_heading(raw: &str) -> String {
 #[pyfunction]
 fn load_schema(py: Python<'_>, folder: &str) -> PyResult<PyObject> {
     let s = mdql_core::schema::load_schema(std::path::Path::new(folder))
-        .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+        .map_err(mdql_to_py_err)?;
     schema_to_py(py, &s)
 }
 
@@ -870,7 +886,7 @@ fn validate_file(py: Python<'_>, parsed_dict: &Bound<'_, PyDict>, schema_folder:
     let path_str: String = parsed_dict.get_item("path")?.unwrap().extract()?;
 
     let schema = mdql_core::schema::load_schema(std::path::Path::new(schema_folder))
-        .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+        .map_err(mdql_to_py_err)?;
 
     let full_path = std::path::Path::new(schema_folder).join(&path_str);
     let parsed = mdql_core::parser::parse_file(
@@ -878,7 +894,7 @@ fn validate_file(py: Python<'_>, parsed_dict: &Bound<'_, PyDict>, schema_folder:
         Some(std::path::Path::new(schema_folder)),
         schema.rules.normalize_numbered_headings,
     )
-    .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+    .map_err(mdql_to_py_err)?;
 
     let errors = mdql_core::validator::validate_file(&parsed, &schema);
     let py_errors = PyList::new(
@@ -899,7 +915,7 @@ fn validate_file(py: Python<'_>, parsed_dict: &Bound<'_, PyDict>, schema_folder:
 #[pyfunction]
 fn load_table(py: Python<'_>, folder: &str) -> PyResult<(PyObject, PyObject, PyObject)> {
     let (schema, rows, errors) = mdql_core::loader::load_table(std::path::Path::new(folder))
-        .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+        .map_err(mdql_to_py_err)?;
 
     let py_schema = schema_to_py(py, &schema)?;
     let py_rows = PyList::new(
@@ -915,7 +931,7 @@ fn load_table(py: Python<'_>, folder: &str) -> PyResult<(PyObject, PyObject, PyO
 #[pyfunction]
 fn parse_query(py: Python<'_>, sql: &str) -> PyResult<PyObject> {
     let stmt = qp::parse_query(sql)
-        .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+        .map_err(mdql_to_py_err)?;
 
     match stmt {
         qp::Statement::Select(q) => select_query_to_py(py, &q),
@@ -976,7 +992,7 @@ fn execute_query_rows(
     rows: &Bound<'_, PyList>,
 ) -> PyResult<(PyObject, PyObject)> {
     let stmt = qp::parse_query(sql)
-        .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+        .map_err(mdql_to_py_err)?;
 
     let select = match stmt {
         qp::Statement::Select(q) => q,
@@ -1010,7 +1026,7 @@ fn execute_query_rows(
     };
 
     let (result_rows, columns) = mdql_core::query_engine::execute_query(&select, &rust_rows, &dummy_schema)
-        .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+        .map_err(mdql_to_py_err)?;
 
     let py_rows = PyList::new(
         py,
@@ -1024,15 +1040,15 @@ fn execute_query_rows(
 #[pyfunction]
 fn execute_query_folder(py: Python<'_>, sql: &str, folder: &str) -> PyResult<(PyObject, PyObject)> {
     let stmt = qp::parse_query(sql)
-        .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+        .map_err(mdql_to_py_err)?;
 
     let (schema, rows, _) = mdql_core::loader::load_table(std::path::Path::new(folder))
-        .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+        .map_err(mdql_to_py_err)?;
 
     match stmt {
         qp::Statement::Select(q) => {
             let (result_rows, columns) = mdql_core::query_engine::execute_query(&q, &rows, &schema)
-                .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+                .map_err(mdql_to_py_err)?;
             let py_rows = PyList::new(
                 py,
                 result_rows.iter().map(|r| row_to_dict(py, r).unwrap()),
@@ -1055,7 +1071,7 @@ fn stamp_file(py: Python<'_>, path: &str, today: Option<&str>) -> PyResult<PyObj
                 .map(|d| d.and_hms_opt(0, 0, 0).unwrap()))
     });
     let result = mdql_core::stamp::stamp_file(std::path::Path::new(path), now)
-        .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+        .map_err(mdql_to_py_err)?;
     let dict = PyDict::new(py);
     dict.set_item("created_set", result.created_set)?;
     dict.set_item("modified_updated", result.modified_updated)?;
@@ -1066,14 +1082,14 @@ fn stamp_file(py: Python<'_>, path: &str, today: Option<&str>) -> PyResult<PyObj
 #[pyfunction]
 fn atomic_write(path: &str, content: &str) -> PyResult<()> {
     mdql_core::txn::atomic_write(std::path::Path::new(path), content)
-        .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+        .map_err(mdql_to_py_err)
 }
 
 /// Recover journal if one exists. Returns true if recovery was performed.
 #[pyfunction]
 fn recover_journal(folder: &str) -> PyResult<bool> {
     mdql_core::txn::recover_journal(std::path::Path::new(folder))
-        .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+        .map_err(mdql_to_py_err)
 }
 
 /// Migrate: rename frontmatter key in file.
@@ -1082,13 +1098,13 @@ fn rename_frontmatter_key_in_file(path: &str, old_key: &str, new_key: &str) -> P
     mdql_core::migrate::rename_frontmatter_key_in_file(
         std::path::Path::new(path), old_key, new_key,
     )
-    .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+    .map_err(mdql_to_py_err)
 }
 
 #[pyfunction]
 fn drop_frontmatter_key_in_file(path: &str, key: &str) -> PyResult<bool> {
     mdql_core::migrate::drop_frontmatter_key_in_file(std::path::Path::new(path), key)
-        .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+        .map_err(mdql_to_py_err)
 }
 
 #[pyfunction]
@@ -1096,13 +1112,13 @@ fn rename_section_in_file(path: &str, old_name: &str, new_name: &str, normalize:
     mdql_core::migrate::rename_section_in_file(
         std::path::Path::new(path), old_name, new_name, normalize,
     )
-    .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+    .map_err(mdql_to_py_err)
 }
 
 #[pyfunction]
 fn drop_section_in_file(path: &str, name: &str, normalize: bool) -> PyResult<bool> {
     mdql_core::migrate::drop_section_in_file(std::path::Path::new(path), name, normalize)
-        .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+        .map_err(mdql_to_py_err)
 }
 
 #[pyfunction]
@@ -1110,7 +1126,7 @@ fn merge_sections_in_file(path: &str, sources: Vec<String>, into: &str, normaliz
     mdql_core::migrate::merge_sections_in_file(
         std::path::Path::new(path), &sources, into, normalize,
     )
-    .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+    .map_err(mdql_to_py_err)
 }
 
 #[pyfunction]
@@ -1149,7 +1165,7 @@ fn update_schema(
         std::path::Path::new(schema_path),
         rename_fm, drop_fm, rename_sec, drop_sec, merge,
     )
-    .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+    .map_err(mdql_to_py_err)
 }
 
 #[pyfunction]
