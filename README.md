@@ -81,8 +81,8 @@ mechanism: 7
 categories:
   - defi-protocol
   - lending
-created: "2026-04-03"
-modified: "2026-04-05"
+created: "2026-04-03T14:22:01"
+modified: "2026-04-05T09:15:33"
 ---
 
 ## Hypothesis
@@ -98,7 +98,7 @@ The protocol's shortfall module triggers an auction...
 - YAML frontmatter fields are metadata columns (`title`, `status`, `mechanism`, ...)
 - H2 sections are content columns (`Hypothesis`, `Structural Mechanism`, ...)
 - The `path` (filename) is the implicit primary key
-- `created` and `modified` are reserved timestamp fields, auto-managed by `mdql stamp`
+- `created` and `modified` are reserved datetime fields (ISO 8601, e.g. `"2026-04-03T14:22:01"`), auto-managed by `mdql stamp`
 - All columns are queryable with SQL
 
 ## `_mdql.md` files
@@ -427,10 +427,6 @@ mdql query examples/strategies/ \
 # HAVING filters groups after aggregation
 mdql query examples/strategies/ \
   "SELECT status, COUNT(*) cnt FROM strategies GROUP BY status HAVING COUNT(*) > 10"
-
-# Conditional aggregation with CASE WHEN
-mdql query examples/strategies/ \
-  "SELECT COUNT(*) total, SUM(CASE WHEN mechanism >= 7 THEN 1 ELSE 0 END) high_mechanism FROM strategies"
 ```
 
 Supported aggregate functions: `COUNT(*)`, `COUNT(col)`, `SUM(expr)`, `AVG(expr)`, `MIN(expr)`, `MAX(expr)`.
