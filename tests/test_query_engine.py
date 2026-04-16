@@ -150,9 +150,9 @@ class TestRealStrategyData:
         for r in result:
             assert any("defi" in c for c in r["categories"])
 
-    def test_status_killed(self, strategies):
+    def test_status_hypothesis(self, strategies):
         schema, rows = strategies
-        q = parse_query("SELECT title, status, kill_reason FROM strategies WHERE status = 'KILLED'")
+        q = parse_query("SELECT title, status FROM strategies WHERE status = 'HYPOTHESIS'")
         result, _ = execute_query(q, rows, schema)
         assert len(result) >= 2
-        assert all(r["status"] == "KILLED" for r in result)
+        assert all(r["status"] == "HYPOTHESIS" for r in result)

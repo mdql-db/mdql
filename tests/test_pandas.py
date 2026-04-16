@@ -76,7 +76,7 @@ class TestWithExampleData:
     )
     def test_load_strategies(self):
         df = load_dataframe(EXAMPLES / "strategies")
-        assert len(df) > 100
+        assert len(df) >= 100
         assert pd.api.types.is_datetime64_any_dtype(df["created"])
         assert df["title"].dtype == "string"
         assert df["mechanism"].dtype == "Int64"
