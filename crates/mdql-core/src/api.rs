@@ -1002,3 +1002,178 @@ impl Database {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_slugify_basic() {
+        assert_eq!(slugify("Hello World", 80), "hello-world");
+    }
+
+    #[test]
+    fn test_slugify_special_chars() {
+        assert_eq!(slugify("My Strategy: Alpha & Beta!", 80), "my-strategy-alpha-beta");
+    }
+
+    #[test]
+    fn test_slugify_max_length() {
+        let result = slugify("a very long title that exceeds the limit", 10);
+        assert!(result.len() <= 10);
+        assert!(!result.ends_with('-'));
+    }
+
+    #[test]
+    fn test_slugify_whitespace() {
+        assert_eq!(slugify("  hello   world  ", 80), "hello-world");
+    }
+
+    #[test]
+    fn test_coerce_int() {
+        let v = coerce_cli_value("42", &FieldType::Int).unwrap();
+        assert_eq!(v, Value::Int(42));
+    }
+
+    #[test]
+    fn test_coerce_int_error() {
+        assert!(coerce_cli_value("abc", &FieldType::Int).is_err());
+    }
+
+    #[test]
+    fn test_coerce_float() {
+        let v = coerce_cli_value("3.14", &FieldType::Float).unwrap();
+        assert_eq!(v, Value::Float(3.14));
+    }
+
+    #[test]
+    fn test_coerce_bool_true() {
+        assert_eq!(coerce_cli_value("true", &FieldType::Bool).unwrap(), Value::Bool(true));
+        assert_eq!(coerce_cli_value("yes", &FieldType::Bool).unwrap(), Value::Bool(true));
+        assert_eq!(coerce_cli_value("1", &FieldType::Bool).unwrap(), Value::Bool(true));
+    }
+
+    #[test]
+    fn test_coerce_bool_false() {
+        assert_eq!(coerce_cli_value("false", &FieldType::Bool).unwrap(), Value::Bool(false));
+        assert_eq!(coerce_cli_value("no", &FieldType::Bool).unwrap(), Value::Bool(false));
+    }
+
+    #[test]
+    fn test_coerce_string_array() {
+        let v = coerce_cli_value("a, b, c", &FieldType::StringArray).unwrap();
+        assert_eq!(v, Value::List(vec!["a".into(), "b".into(), "c".into()]));
+    }
+
+    #[test]
+    fn test_coerce_date() {
+        let v = coerce_cli_value("2026-04-16", &FieldType::Date).unwrap();
+        assert_eq!(v, Value::Date(chrono::NaiveDate::from_ymd_opt(2026, 4, 16).unwrap()));
+    }
+
+    #[test]
+    fn test_coerce_datetime() {
+        let v = coerce_cli_value("2026-04-16T10:30:00", &FieldType::DateTime).unwrap();
+        match v {
+            Value::DateTime(dt) => {
+                assert_eq!(dt.date(), chrono::NaiveDate::from_ymd_opt(2026, 4, 16).unwrap());
+            }
+            _ => panic!("expected DateTime"),
+        }
+    }
+
+    #[test]
+    fn test_coerce_string() {
+        let v = coerce_cli_value("hello", &FieldType::String).unwrap();
+        assert_eq!(v, Value::String("hello".into()));
+    }
+
+    #[test]
+    fn test_table_new_missing_schema() {
+        let dir = tempfile::tempdir().unwrap();
+        let result = Table::new(dir.path());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_table_insert_and_load() {
+        let dir = tempfile::tempdir().unwrap();
+        let schema_content = "---\ntype: schema\ntable: test\nprimary_key: path\nfrontmatter:\n  title:\n    type: string\n    required: true\n---\n";
+        std::fs::write(dir.path().join("_mdql.md"), schema_content).unwrap();
+
+        let table = Table::new(dir.path()).unwrap();
+        let mut data = HashMap::new();
+        data.insert("title".into(), Value::String("Hello".into()));
+
+        let path = table.insert(&data, None, Some("hello"), false).unwrap();
+        assert!(path.exists());
+
+        let (rows, errors) = table.load().unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].get("title"), Some(&Value::String("Hello".into())));
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn test_table_insert_duplicate_rejected() {
+        let dir = tempfile::tempdir().unwrap();
+        let schema_content = "---\ntype: schema\ntable: test\nprimary_key: path\nfrontmatter:\n  title:\n    type: string\n    required: true\n---\n";
+        std::fs::write(dir.path().join("_mdql.md"), schema_content).unwrap();
+
+        let table = Table::new(dir.path()).unwrap();
+        let mut data = HashMap::new();
+        data.insert("title".into(), Value::String("Hello".into()));
+
+        table.insert(&data, None, Some("hello"), false).unwrap();
+        let result = table.insert(&data, None, Some("hello"), false);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_table_update() {
+        let dir = tempfile::tempdir().unwrap();
+        let schema_content = "---\ntype: schema\ntable: test\nprimary_key: path\nfrontmatter:\n  title:\n    type: string\n    required: true\n  score:\n    type: int\n---\n";
+        std::fs::write(dir.path().join("_mdql.md"), schema_content).unwrap();
+
+        let table = Table::new(dir.path()).unwrap();
+        let mut data = HashMap::new();
+        data.insert("title".into(), Value::String("Test".into()));
+        data.insert("score".into(), Value::Int(10));
+        table.insert(&data, None, Some("test"), false).unwrap();
+
+        let mut update = HashMap::new();
+        update.insert("score".into(), Value::Int(20));
+        table.update("test", &update, None).unwrap();
+
+        let (rows, _) = table.load().unwrap();
+        assert_eq!(rows[0].get("score"), Some(&Value::Int(20)));
+    }
+
+    #[test]
+    fn test_table_delete() {
+        let dir = tempfile::tempdir().unwrap();
+        let schema_content = "---\ntype: schema\ntable: test\nprimary_key: path\nfrontmatter:\n  title:\n    type: string\n    required: true\n---\n";
+        std::fs::write(dir.path().join("_mdql.md"), schema_content).unwrap();
+
+        let table = Table::new(dir.path()).unwrap();
+        let mut data = HashMap::new();
+        data.insert("title".into(), Value::String("Doomed".into()));
+        table.insert(&data, None, Some("doomed"), false).unwrap();
+
+        table.delete("doomed").unwrap();
+        let (rows, _) = table.load().unwrap();
+        assert!(rows.is_empty());
+    }
+
+    #[test]
+    fn test_table_validate() {
+        let dir = tempfile::tempdir().unwrap();
+        let schema_content = "---\ntype: schema\ntable: test\nprimary_key: path\nfrontmatter:\n  title:\n    type: string\n    required: true\n---\n";
+        std::fs::write(dir.path().join("_mdql.md"), schema_content).unwrap();
+        std::fs::write(dir.path().join("bad.md"), "---\n---\nNo title field\n").unwrap();
+
+        let table = Table::new(dir.path()).unwrap();
+        let errors = table.validate().unwrap();
+        assert!(!errors.is_empty());
+    }
+}
