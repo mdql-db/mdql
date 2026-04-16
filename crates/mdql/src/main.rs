@@ -99,6 +99,11 @@ enum Commands {
         #[arg(short, long, default_value = "3000")]
         port: u16,
     },
+    /// Migrate created/modified fields from date to ISO 8601 datetime
+    MigrateTimestamps {
+        /// Path to table or database folder
+        folder: PathBuf,
+    },
 }
 
 fn is_database_dir(folder: &std::path::Path) -> bool {
@@ -219,6 +224,7 @@ fn main() {
                 }
             }
         }
+        Some(Commands::MigrateTimestamps { folder }) => cmd_migrate_timestamps(&folder),
         Some(Commands::Client { folder, port }) => {
             let db_path = folder
                 .as_ref()
@@ -972,4 +978,120 @@ fn print_fields(s: &mdql_core::schema::Schema) {
         let req = if sd.required { "required" } else { "optional" };
         println!("  {}  {}, {}", name, sd.content_type, req);
     }
+}
+
+fn is_date_str(s: &str) -> bool {
+    s.len() == 10
+        && s.as_bytes()[4] == b'-'
+        && s.as_bytes()[7] == b'-'
+        && s[..4].chars().all(|c| c.is_ascii_digit())
+        && s[5..7].chars().all(|c| c.is_ascii_digit())
+        && s[8..10].chars().all(|c| c.is_ascii_digit())
+}
+
+fn cmd_migrate_timestamps(folder: &std::path::Path) -> Result<(), MdqlError> {
+    let folders: Vec<std::path::PathBuf> = if is_database_dir(folder) {
+        std::fs::read_dir(folder)?
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|p| p.is_dir() && p.join(MDQL_FILENAME).exists())
+            .collect()
+    } else {
+        vec![folder.to_path_buf()]
+    };
+
+    let mut total_files = 0;
+    let mut total_fields = 0;
+
+    for table_dir in &folders {
+        let entries: Vec<_> = std::fs::read_dir(table_dir)?
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|p| {
+                p.extension().map_or(false, |e| e == "md")
+                    && p.file_name()
+                        .map_or(false, |n| n.to_string_lossy() != MDQL_FILENAME)
+            })
+            .collect();
+
+        for file in &entries {
+            let text = std::fs::read_to_string(file)?;
+            let mut file_modified = false;
+            let new_text: String = text
+                .lines()
+                .map(|line| {
+                    for prefix in &["created: ", "modified: "] {
+                        if let Some(rest) = line.strip_prefix(prefix) {
+                            // Match: "YYYY-MM-DD" (exactly 12 chars: quote + 10 date + quote)
+                            let trimmed = rest.trim();
+                            if trimmed.len() == 12
+                                && trimmed.starts_with('"')
+                                && trimmed.ends_with('"')
+                            {
+                                let date = &trimmed[1..11];
+                                if is_date_str(date) {
+                                    file_modified = true;
+                                    total_fields += 1;
+                                    return format!("{}\"{}T00:00:00\"", prefix, date);
+                                }
+                            }
+                            // Match: YYYY-MM-DD (unquoted, 10 chars)
+                            if trimmed.len() == 10 && is_date_str(trimmed) {
+                                file_modified = true;
+                                total_fields += 1;
+                                return format!("{}\"{}T00:00:00\"", prefix, trimmed);
+                            }
+                        }
+                    }
+                    line.to_string()
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            if file_modified {
+                mdql_core::txn::atomic_write(file, &new_text)?;
+                total_files += 1;
+            }
+        }
+
+        // Update schema if it declares created/modified as date type
+        let schema_path = table_dir.join(MDQL_FILENAME);
+        if schema_path.exists() {
+            let text = std::fs::read_to_string(&schema_path)?;
+            let mut schema_modified = false;
+            let new_text: String = text
+                .lines()
+                .enumerate()
+                .map(|(i, line)| {
+                    // Look for "    type: date" that follows a "  created:" or "  modified:" line
+                    if line.trim() == "type: date" {
+                        let lines_vec: Vec<&str> = text.lines().collect();
+                        if i > 0 {
+                            let prev = lines_vec[i - 1].trim().trim_end_matches(':');
+                            if prev == "created" || prev == "modified" {
+                                schema_modified = true;
+                                return line.replace("type: date", "type: datetime");
+                            }
+                        }
+                    }
+                    line.to_string()
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            if schema_modified {
+                mdql_core::txn::atomic_write(&schema_path, &new_text)?;
+                println!(
+                    "  Updated schema: {}",
+                    table_dir.file_name().unwrap_or_default().to_string_lossy()
+                );
+            }
+        }
+    }
+
+    println!(
+        "Migrated {} field(s) in {} file(s) from date to datetime",
+        total_fields, total_files
+    );
+    Ok(())
 }

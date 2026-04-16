@@ -43,7 +43,9 @@ fn format_yaml_value(value: &Value, field_type: &FieldType) -> String {
     match (value, field_type) {
         (Value::String(s), FieldType::String) => format!("\"{}\"", s),
         (Value::String(s), FieldType::Date) => format!("\"{}\"", s),
+        (Value::String(s), FieldType::DateTime) => format!("\"{}\"", s),
         (Value::Date(d), _) => format!("\"{}\"", d.format("%Y-%m-%d")),
+        (Value::DateTime(dt), _) => format!("\"{}\"", dt.format("%Y-%m-%dT%H:%M:%S")),
         (Value::Int(n), _) => n.to_string(),
         (Value::Float(f), _) => format!("{}", f),
         (Value::Bool(b), _) => if *b { "true" } else { "false" }.to_string(),
@@ -65,7 +67,7 @@ fn serialize_frontmatter(
     schema: &Schema,
     preserve_created: Option<&str>,
 ) -> String {
-    let today = chrono::Local::now().date_naive().format("%Y-%m-%d").to_string();
+    let now = chrono::Local::now().naive_local().format("%Y-%m-%dT%H:%M:%S").to_string();
 
     let mut fm_lines: Vec<String> = Vec::new();
 
@@ -100,10 +102,10 @@ fn serialize_frontmatter(
         .unwrap_or_else(|| {
             data.get("created")
                 .map(|v| v.to_display_string())
-                .unwrap_or_else(|| today.clone())
+                .unwrap_or_else(|| now.clone())
         });
     fm_lines.push(format!("created: \"{}\"", created));
-    fm_lines.push(format!("modified: \"{}\"", today));
+    fm_lines.push(format!("modified: \"{}\"", now));
 
     format!("---\n{}\n---\n", fm_lines.join("\n"))
 }
@@ -201,7 +203,23 @@ pub fn coerce_cli_value(raw: &str, field_type: &FieldType) -> crate::errors::Res
         FieldType::StringArray => Ok(Value::List(
             raw.split(',').map(|s| s.trim().to_string()).collect(),
         )),
-        FieldType::String | FieldType::Date => Ok(Value::String(raw.to_string())),
+        FieldType::Date => {
+            if let Ok(d) = chrono::NaiveDate::parse_from_str(raw, "%Y-%m-%d") {
+                Ok(Value::Date(d))
+            } else {
+                Ok(Value::String(raw.to_string()))
+            }
+        }
+        FieldType::DateTime => {
+            if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(raw, "%Y-%m-%dT%H:%M:%S") {
+                Ok(Value::DateTime(dt))
+            } else if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(raw, "%Y-%m-%dT%H:%M:%S%.f") {
+                Ok(Value::DateTime(dt))
+            } else {
+                Ok(Value::String(raw.to_string()))
+            }
+        }
+        FieldType::String => Ok(Value::String(raw.to_string())),
     }
 }
 

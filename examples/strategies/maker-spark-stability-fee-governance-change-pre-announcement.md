@@ -10,7 +10,7 @@ categories:
   - governance
   - defi-protocol
   - lending
-created: "2026-04-03"
+created: "2026-04-03T00:00:00"
 pipeline_stage: "Pre-backtest (step 2 of 9)"
 ---
 

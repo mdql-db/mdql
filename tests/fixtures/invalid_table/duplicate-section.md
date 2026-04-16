@@ -1,7 +1,7 @@
 ---
 title: Duplicate section
 count: 1
-created: 2026-04-04
+created: "2026-04-04T00:00:00"
 ---
 
 ## Body

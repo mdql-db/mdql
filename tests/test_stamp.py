@@ -10,7 +10,7 @@ import pytest
 from mdql.stamp import TIMESTAMP_FIELDS, stamp_file, stamp_table
 
 FIXTURES = Path(__file__).parent / "fixtures"
-TODAY = datetime.date(2026, 4, 5)
+TODAY = datetime.datetime(2026, 4, 5, 14, 30, 0)
 
 
 class TestStampFile:
@@ -24,12 +24,12 @@ class TestStampFile:
         assert result["modified_updated"] is True
 
         text = f.read_text()
-        assert 'created: "2026-04-05"' in text
-        assert 'modified: "2026-04-05"' in text
+        assert 'created: "2026-04-05T14:30:00"' in text
+        assert 'modified: "2026-04-05T14:30:00"' in text
 
     def test_preserves_existing_created(self, tmp_path):
         f = tmp_path / "note.md"
-        f.write_text('---\ntitle: "Hello"\ncreated: "2026-01-01"\n---\n\n## Body\n')
+        f.write_text('---\ntitle: "Hello"\ncreated: "2026-01-01T09:00:00"\n---\n\n## Body\n')
 
         result = stamp_file(f, now=TODAY)
 
@@ -37,13 +37,13 @@ class TestStampFile:
         assert result["modified_updated"] is True
 
         text = f.read_text()
-        assert 'created: "2026-01-01"' in text
-        assert 'modified: "2026-04-05"' in text
+        assert 'created: "2026-01-01T09:00:00"' in text
+        assert 'modified: "2026-04-05T14:30:00"' in text
 
     def test_updates_existing_modified(self, tmp_path):
         f = tmp_path / "note.md"
         f.write_text(
-            '---\ntitle: "Hello"\ncreated: "2026-01-01"\nmodified: "2026-03-01"\n---\n'
+            '---\ntitle: "Hello"\ncreated: "2026-01-01T09:00:00"\nmodified: "2026-03-01T12:00:00"\n---\n'
         )
 
         result = stamp_file(f, now=TODAY)
@@ -52,8 +52,8 @@ class TestStampFile:
         assert result["modified_updated"] is True
 
         text = f.read_text()
-        assert 'created: "2026-01-01"' in text
-        assert 'modified: "2026-04-05"' in text
+        assert 'created: "2026-01-01T09:00:00"' in text
+        assert 'modified: "2026-04-05T14:30:00"' in text
         # Old date should be gone
         assert "2026-03-01" not in text
 
@@ -132,7 +132,7 @@ class TestValidatorAcceptsTimestamps:
             "rules:\n  reject_unknown_frontmatter: true\n---\n"
         )
         (tmp_path / "note.md").write_text(
-            '---\ntitle: "Hello"\ncreated: "2026-04-05"\nmodified: "2026-04-05"\n---\n'
+            '---\ntitle: "Hello"\ncreated: "2026-04-05T14:30:00"\nmodified: "2026-04-05T14:30:00"\n---\n'
         )
 
         from mdql.loader import load_table
@@ -157,4 +157,4 @@ class TestValidatorAcceptsTimestamps:
         schema, rows, errors = load_table(tmp_path)
 
         assert len(errors) == 1
-        assert "date" in errors[0].message
+        assert "date" in errors[0].message or "datetime" in errors[0].message

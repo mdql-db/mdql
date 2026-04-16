@@ -749,6 +749,12 @@ fn coerce_sql_to_value(sql_val: &SqlValue, target: &Value) -> Value {
                         .map(Value::Date)
                         .unwrap_or(Value::String(s.clone()))
                 }
+                Value::DateTime(_) => {
+                    chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S")
+                        .or_else(|_| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.f"))
+                        .map(Value::DateTime)
+                        .unwrap_or(Value::String(s.clone()))
+                }
                 _ => Value::String(s.clone()),
             }
         }
@@ -818,6 +824,13 @@ fn compare_values(actual: &Value, expected: &SqlValue) -> Option<Ordering> {
 fn sql_value_to_index_value(sv: &SqlValue) -> Value {
     match sv {
         SqlValue::String(s) => {
+            // Try datetime first (more specific)
+            if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S") {
+                return Value::DateTime(dt);
+            }
+            if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.f") {
+                return Value::DateTime(dt);
+            }
             // Try date
             if let Ok(d) = chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d") {
                 return Value::Date(d);

@@ -9,7 +9,7 @@ win_rate: 0.033
 sharpe: -0.8
 max_drawdown: 0.25
 status: fail
-created: "2026-04-05"
+created: "2026-04-05T00:00:00"
 ---
 
 ## Summary

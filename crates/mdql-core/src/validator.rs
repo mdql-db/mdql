@@ -81,13 +81,13 @@ pub fn validate_file(parsed: &ParsedFile, schema: &Schema) -> Vec<ValidationErro
         }
     }
 
-    // Validate timestamp fields if present
+    // Validate timestamp fields as datetime (ISO 8601)
     for ts_field in TIMESTAMP_FIELDS {
         let key = serde_yaml::Value::String(ts_field.to_string());
         if let Some(value) = fm_map.get(&key) {
             if let Some(type_err) = check_type(
                 value,
-                &crate::schema::FieldType::Date,
+                &crate::schema::FieldType::DateTime,
                 ts_field,
             ) {
                 errors.push(ValidationError {
@@ -282,21 +282,38 @@ fn check_type(
             }
         }
         FieldType::Date => {
-            // YAML may parse dates as strings or as chrono dates
             if let Some(s) = value.as_str() {
                 if chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").is_err() {
                     return Some(format!(
-                        "Field '{}' expected date, got string '{}' (not ISO format)",
+                        "Field '{}' expected date (YYYY-MM-DD), got string '{}'",
                         field_name, s
                     ));
                 }
                 return None;
             }
-            // serde_yaml may parse bare dates (2026-04-04) as strings already
-            // But if it comes as another type, that's an error
             if !value.is_string() {
                 return Some(format!(
                     "Field '{}' expected date, got {}",
+                    field_name,
+                    yaml_type_name(value)
+                ));
+            }
+        }
+        FieldType::DateTime => {
+            if let Some(s) = value.as_str() {
+                let ok = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S").is_ok()
+                    || chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.f").is_ok();
+                if !ok {
+                    return Some(format!(
+                        "Field '{}' expected datetime (ISO 8601), got string '{}'",
+                        field_name, s
+                    ));
+                }
+                return None;
+            }
+            if !value.is_string() {
+                return Some(format!(
+                    "Field '{}' expected datetime, got {}",
                     field_name,
                     yaml_type_name(value)
                 ));

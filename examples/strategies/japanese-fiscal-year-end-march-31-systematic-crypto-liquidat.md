@@ -9,7 +9,7 @@ composite: 144
 categories:
   - calendar-seasonal
   - exchange-structure
-created: "2025-01-30"
+created: "2025-01-30T00:00:00"
 pipeline_stage: "Pre-backtest (step 2 of 9)"
 ---
 

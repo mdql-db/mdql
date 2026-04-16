@@ -9,7 +9,7 @@ use crate::parser::parse_file;
 
 pub const MDQL_FILENAME: &str = "_mdql.md";
 
-pub const VALID_FIELD_TYPES: &[&str] = &["string", "int", "float", "bool", "date", "string[]"];
+pub const VALID_FIELD_TYPES: &[&str] = &["string", "int", "float", "bool", "date", "datetime", "string[]"];
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum FieldType {
@@ -18,6 +18,7 @@ pub enum FieldType {
     Float,
     Bool,
     Date,
+    DateTime,
     StringArray,
 }
 
@@ -29,6 +30,7 @@ impl FieldType {
             "float" => Some(FieldType::Float),
             "bool" => Some(FieldType::Bool),
             "date" => Some(FieldType::Date),
+            "datetime" => Some(FieldType::DateTime),
             "string[]" => Some(FieldType::StringArray),
             _ => None,
         }
@@ -41,6 +43,7 @@ impl FieldType {
             FieldType::Float => "float",
             FieldType::Bool => "bool",
             FieldType::Date => "date",
+            FieldType::DateTime => "datetime",
             FieldType::StringArray => "string[]",
         }
     }
