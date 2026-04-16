@@ -140,7 +140,7 @@ rules:
 Documentation about this table goes here.
 ```
 
-Supported types: `string`, `int`, `float`, `bool`, `date`, `string[]`
+Supported types: `string`, `int`, `float`, `bool`, `date`, `datetime`, `string[]`
 
 ### Database config (`type: database`)
 
@@ -513,7 +513,7 @@ Invalid files get clear error messages:
 
 ```
 missing-field.md: Missing required frontmatter field 'count'
-wrong-type-date.md: Field 'created' expected date, got string 'yesterday'
+wrong-type-date.md: Field 'created' expected datetime (ISO 8601), got string 'yesterday'
 duplicate-section.md: Duplicate section 'Body' (appears 2 times)
 ```
 
@@ -536,9 +536,9 @@ mdql stamp examples/strategies/
 # Stamped 100 files: 0 created set, 100 modified updated
 ```
 
-- `created` is set to today's date if missing, never overwritten
-- `modified` is always updated to today's date
-- Both are ISO date strings (`"YYYY-MM-DD"`) in frontmatter
+- `created` is set to the current ISO 8601 timestamp if missing, never overwritten
+- `modified` is always updated to the current ISO 8601 timestamp
+- Both are ISO datetime strings (`"YYYY-MM-DDTHH:MM:SS"`) in frontmatter
 - These fields are reserved — schemas don't need to declare them, and they are never rejected as unknown fields
 
 ### `mdql schema <folder>`

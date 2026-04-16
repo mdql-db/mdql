@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use chrono::NaiveDate;
+use chrono::NaiveDateTime;
 
 use crate::txn::atomic_write;
 
@@ -10,11 +10,11 @@ pub const TIMESTAMP_FIELDS: &[&str] = &["created", "modified"];
 
 pub fn stamp_file(
     path: &Path,
-    now: Option<NaiveDate>,
+    now: Option<NaiveDateTime>,
 ) -> crate::errors::Result<StampResult> {
-    let today = now
-        .unwrap_or_else(|| chrono::Local::now().date_naive())
-        .format("%Y-%m-%d")
+    let now_str = now
+        .unwrap_or_else(|| chrono::Local::now().naive_local())
+        .format("%Y-%m-%dT%H:%M:%S")
         .to_string();
 
     let text = std::fs::read_to_string(path)?;
@@ -63,14 +63,14 @@ pub fn stamp_file(
 
     let mut created_set = false;
     if created_idx.is_none() {
-        fm_lines.push(format!("created: \"{}\"", today));
+        fm_lines.push(format!("created: \"{}\"", now_str));
         created_set = true;
     }
 
     if let Some(idx) = modified_idx {
-        fm_lines[idx] = format!("modified: \"{}\"", today);
+        fm_lines[idx] = format!("modified: \"{}\"", now_str);
     } else {
-        fm_lines.push(format!("modified: \"{}\"", today));
+        fm_lines.push(format!("modified: \"{}\"", now_str));
     }
 
     let mut new_lines: Vec<String> = vec!["---".to_string()];

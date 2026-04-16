@@ -9,7 +9,7 @@ win_rate: 0.44
 sharpe: 0.6
 max_drawdown: 0.18
 status: inconclusive
-created: "2026-04-05"
+created: "2026-04-05T00:00:00"
 ---
 
 ## Summary

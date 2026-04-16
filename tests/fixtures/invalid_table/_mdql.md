@@ -11,7 +11,7 @@ frontmatter:
     type: int
     required: true
   created:
-    type: date
+    type: datetime
     required: true
 
 h1:

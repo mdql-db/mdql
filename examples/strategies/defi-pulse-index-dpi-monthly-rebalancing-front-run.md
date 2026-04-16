@@ -9,7 +9,7 @@ composite: 300
 categories:
   - index-rebalance
   - defi-protocol
-created: "2026-04-04"
+created: "2026-04-04T00:00:00"
 pipeline_stage: "Pre-backtest (step 2 of 9)"
 ---
 

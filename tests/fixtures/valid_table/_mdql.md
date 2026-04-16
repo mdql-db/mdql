@@ -11,7 +11,7 @@ frontmatter:
     type: string
     required: true
   created:
-    type: date
+    type: datetime
     required: true
   tags:
     type: string[]

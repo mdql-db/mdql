@@ -19,14 +19,19 @@ class StampResult:
         return getattr(self, key)
 
 
-def stamp_file(path: str | Path, now: datetime.date | None = None) -> StampResult:
+def stamp_file(path: str | Path, now: datetime.datetime | datetime.date | None = None) -> StampResult:
     """Add or update created/modified timestamps in a file."""
-    today_str = now.isoformat() if now else None
+    if isinstance(now, datetime.datetime):
+        today_str = now.strftime("%Y-%m-%dT%H:%M:%S")
+    elif isinstance(now, datetime.date):
+        today_str = now.isoformat()
+    else:
+        today_str = None
     result = _rust_stamp_file(str(path), today_str)
     return StampResult(result["created_set"], result["modified_updated"])
 
 
-def stamp_table(folder: str | Path, now: datetime.date | None = None) -> list[tuple[str, StampResult]]:
+def stamp_table(folder: str | Path, now: datetime.datetime | datetime.date | None = None) -> list[tuple[str, StampResult]]:
     """Stamp all markdown files in a table folder."""
     folder = Path(folder)
     results = []

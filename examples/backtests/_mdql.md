@@ -36,7 +36,7 @@ frontmatter:
     required: true
     enum: [pass, fail, inconclusive]
   created:
-    type: date
+    type: datetime
     required: true
 
 h1:

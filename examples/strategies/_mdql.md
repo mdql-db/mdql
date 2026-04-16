@@ -30,13 +30,13 @@ frontmatter:
     type: string[]
     required: true
   created:
-    type: date
+    type: datetime
     required: true
   pipeline_stage:
     type: string
     required: true
   killed:
-    type: date
+    type: datetime
     required: false
   kill_reason:
     type: string

@@ -9,7 +9,7 @@ composite: 288
 categories:
   - basis-trade
   - calendar-seasonal
-created: "2025-07-14"
+created: "2025-07-14T00:00:00"
 pipeline_stage: "Pre-backtest (step 2 of 9)"
 ---
 

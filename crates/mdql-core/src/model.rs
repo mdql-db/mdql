@@ -17,6 +17,7 @@ pub enum Value {
     Float(f64),
     Bool(bool),
     Date(chrono::NaiveDate),
+    DateTime(chrono::NaiveDateTime),
     List(Vec<String>),
 }
 
@@ -62,6 +63,7 @@ impl Value {
             Value::Float(f) => format!("{}", f),
             Value::Bool(b) => b.to_string(),
             Value::Date(d) => d.format("%Y-%m-%d").to_string(),
+            Value::DateTime(dt) => dt.format("%Y-%m-%dT%H:%M:%S").to_string(),
             Value::List(items) => items.join(", "),
         }
     }
@@ -83,6 +85,9 @@ impl PartialOrd for Value {
             (Value::String(a), Value::String(b)) => a.partial_cmp(b),
             (Value::Bool(a), Value::Bool(b)) => a.partial_cmp(b),
             (Value::Date(a), Value::Date(b)) => a.partial_cmp(b),
+            (Value::DateTime(a), Value::DateTime(b)) => a.partial_cmp(b),
+            (Value::Date(a), Value::DateTime(b)) => a.and_hms_opt(0, 0, 0).unwrap().partial_cmp(b),
+            (Value::DateTime(a), Value::Date(b)) => a.partial_cmp(&b.and_hms_opt(0, 0, 0).unwrap()),
             // Fallback: compare as strings
             _ => self.to_display_string().partial_cmp(&other.to_display_string()),
         }
@@ -107,6 +112,15 @@ fn yaml_to_value(val: &serde_yaml::Value, field_type: Option<&FieldType>) -> Val
             }
         }
         serde_yaml::Value::String(s) => {
+            // DateTime coercion
+            if let Some(FieldType::DateTime) = field_type {
+                if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S") {
+                    return Value::DateTime(dt);
+                }
+                if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.f") {
+                    return Value::DateTime(dt);
+                }
+            }
             // Date coercion
             if let Some(FieldType::Date) = field_type {
                 if let Ok(date) = chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d") {
@@ -135,7 +149,14 @@ pub fn to_row(parsed: &ParsedFile, schema: &Schema) -> Row {
     if let Some(fm_map) = parsed.raw_frontmatter.as_mapping() {
         for (key_val, value) in fm_map {
             if let Some(key) = key_val.as_str() {
-                let field_type = schema.frontmatter.get(key).map(|fd| &fd.field_type);
+                let field_type = schema.frontmatter.get(key).map(|fd| &fd.field_type)
+                    .or_else(|| {
+                        if crate::stamp::TIMESTAMP_FIELDS.contains(&key) {
+                            Some(&FieldType::DateTime)
+                        } else {
+                            None
+                        }
+                    });
                 row.insert(key.to_string(), yaml_to_value(value, field_type));
             }
         }

@@ -19,6 +19,7 @@ pub enum IndexKey {
     Int(i64),
     Bool(bool),
     Date(chrono::NaiveDate),
+    DateTime(chrono::NaiveDateTime),
 }
 
 impl PartialOrd for IndexKey {
@@ -34,6 +35,7 @@ impl Ord for IndexKey {
             (IndexKey::String(a), IndexKey::String(b)) => a.cmp(b),
             (IndexKey::Bool(a), IndexKey::Bool(b)) => a.cmp(b),
             (IndexKey::Date(a), IndexKey::Date(b)) => a.cmp(b),
+            (IndexKey::DateTime(a), IndexKey::DateTime(b)) => a.cmp(b),
             // Cross-type: order by variant index
             _ => self.variant_order().cmp(&other.variant_order()),
         }
@@ -47,6 +49,7 @@ impl IndexKey {
             IndexKey::Int(_) => 1,
             IndexKey::String(_) => 2,
             IndexKey::Date(_) => 3,
+            IndexKey::DateTime(_) => 4,
         }
     }
 }
@@ -57,6 +60,7 @@ fn value_to_key(v: &Value) -> Option<IndexKey> {
         Value::Int(n) => Some(IndexKey::Int(*n)),
         Value::Bool(b) => Some(IndexKey::Bool(*b)),
         Value::Date(d) => Some(IndexKey::Date(*d)),
+        Value::DateTime(dt) => Some(IndexKey::DateTime(*dt)),
         Value::Float(f) => {
             // Store floats as their bit representation for ordering
             Some(IndexKey::Int(f.to_bits() as i64))

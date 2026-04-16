@@ -9,7 +9,7 @@ composite: 336
 categories:
   - defi-protocol
   - liquidation
-created: "2025-07-11"
+created: "2025-07-11T00:00:00"
 pipeline_stage: "Pre-backtest (step 2 of 9)"
 ---
 

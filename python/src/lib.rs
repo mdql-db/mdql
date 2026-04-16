@@ -28,6 +28,12 @@ fn value_to_py(py: Python<'_>, val: &Value) -> PyObject {
             let date_cls = date_mod.getattr("date").unwrap();
             date_cls.call1((d.year(), d.month(), d.day())).unwrap().into_pyobject(py).unwrap().into_any().unbind()
         }
+        Value::DateTime(dt) => {
+            use chrono::{Datelike, Timelike};
+            let dt_mod = py.import("datetime").unwrap();
+            let dt_cls = dt_mod.getattr("datetime").unwrap();
+            dt_cls.call1((dt.year(), dt.month(), dt.day(), dt.hour(), dt.minute(), dt.second())).unwrap().into_pyobject(py).unwrap().into_any().unbind()
+        }
         Value::List(items) => {
             let list = PyList::new(py, items).unwrap();
             list.into_pyobject(py).unwrap().into_any().unbind()
@@ -49,6 +55,12 @@ fn py_to_value(obj: &Bound<'_, pyo3::PyAny>) -> PyResult<Value> {
         return Ok(Value::Float(f));
     }
     if let Ok(s) = obj.extract::<String>() {
+        if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(&s, "%Y-%m-%dT%H:%M:%S") {
+            return Ok(Value::DateTime(dt));
+        }
+        if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(&s, "%Y-%m-%dT%H:%M:%S%.f") {
+            return Ok(Value::DateTime(dt));
+        }
         if let Ok(d) = chrono::NaiveDate::parse_from_str(&s, "%Y-%m-%d") {
             return Ok(Value::Date(d));
         }
@@ -1012,11 +1024,16 @@ fn execute_query_folder(py: Python<'_>, sql: &str, folder: &str) -> PyResult<(Py
     }
 }
 
-/// Stamp a single file: add/update created and modified dates.
+/// Stamp a single file: add/update created and modified timestamps.
 #[pyfunction]
 #[pyo3(signature = (path, today=None))]
 fn stamp_file(py: Python<'_>, path: &str, today: Option<&str>) -> PyResult<PyObject> {
-    let now = today.and_then(|s| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").ok());
+    let now = today.and_then(|s| {
+        chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S").ok()
+            .or_else(|| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.f").ok())
+            .or_else(|| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").ok()
+                .map(|d| d.and_hms_opt(0, 0, 0).unwrap()))
+    });
     let result = mdql_core::stamp::stamp_file(std::path::Path::new(path), now)
         .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
     let dict = PyDict::new(py);

@@ -406,6 +406,7 @@ fn value_to_json(val: &Value) -> serde_json::Value {
         Value::Float(f) => serde_json::json!(f),
         Value::Bool(b) => serde_json::json!(b),
         Value::Date(d) => serde_json::Value::String(d.format("%Y-%m-%d").to_string()),
+        Value::DateTime(dt) => serde_json::Value::String(dt.format("%Y-%m-%dT%H:%M:%S").to_string()),
         Value::List(items) => serde_json::json!(items),
     }
 }

@@ -9,7 +9,7 @@ composite: 420
 categories:
   - token-supply
   - calendar-seasonal
-created: "2025-01-31"
+created: "2025-01-31T00:00:00"
 pipeline_stage: "Pre-backtest (step 2 of 9)"
 ---
 

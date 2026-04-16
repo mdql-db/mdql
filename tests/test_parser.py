@@ -32,16 +32,17 @@ class TestFrontmatter:
         assert p.path == "simple.md"
         assert not p.parse_errors
 
-    def test_quoted_date_is_string(self):
+    def test_quoted_datetime_is_string(self):
         p = parse_file(FIXTURES / "valid_table" / "with-tags.md", relative_to=FIXTURES / "valid_table")
-        # Quoted date stays as string
+        # Quoted datetime stays as string
         assert isinstance(p.raw_frontmatter["created"], str)
-        assert p.raw_frontmatter["created"] == "2026-04-04"
+        assert p.raw_frontmatter["created"] == "2026-04-04T00:00:00"
 
-    def test_unquoted_date_is_date(self):
+    def test_unquoted_datetime_is_string(self):
         p = parse_file(FIXTURES / "valid_table" / "simple.md", relative_to=FIXTURES / "valid_table")
-        import datetime
-        assert isinstance(p.raw_frontmatter["created"], datetime.date)
+        # Unquoted datetimes are parsed by YAML as strings
+        assert isinstance(p.raw_frontmatter["created"], str)
+        assert p.raw_frontmatter["created"] == "2026-04-04T00:00:00"
 
     def test_tags_list(self):
         p = parse_file(FIXTURES / "valid_table" / "with-tags.md", relative_to=FIXTURES / "valid_table")
