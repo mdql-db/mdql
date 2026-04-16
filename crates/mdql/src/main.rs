@@ -26,6 +26,12 @@ enum Commands {
     Validate {
         /// Path to table or database folder (falls back to MDQL_DATABASE_PATH)
         folder: Option<PathBuf>,
+        /// Exit non-zero on any error (default behavior, flag accepted for clarity)
+        #[arg(long)]
+        strict: bool,
+        /// Suppress output, only set exit code (useful for CI / pre-commit hooks)
+        #[arg(long, short)]
+        quiet: bool,
     },
     /// Run a SQL statement against a table or database
     Query {
@@ -178,8 +184,8 @@ fn main() {
     let cli = Cli::parse();
 
     let result = match cli.command {
-        Some(Commands::Validate { folder }) => {
-            resolve_folder(folder.as_deref()).and_then(|f| cmd_validate(&f))
+        Some(Commands::Validate { folder, quiet, .. }) => {
+            resolve_folder(folder.as_deref()).and_then(|f| cmd_validate(&f, quiet))
         }
         Some(Commands::Query {
             folder,
@@ -254,7 +260,7 @@ fn main() {
     }
 }
 
-fn cmd_validate(folder: &std::path::Path) -> Result<(), MdqlError> {
+fn cmd_validate(folder: &std::path::Path, quiet: bool) -> Result<(), MdqlError> {
     if is_database_dir(folder) {
         // Database-level validation: schema + foreign keys
         let (_db_config, tables, errors) = mdql_core::loader::load_database(folder)?;
@@ -262,52 +268,62 @@ fn cmd_validate(folder: &std::path::Path) -> Result<(), MdqlError> {
         let schema_errors: Vec<_> = errors.iter().filter(|e| e.error_type != "fk_violation" && e.error_type != "fk_missing_table").collect();
         let fk_errors: Vec<_> = errors.iter().filter(|e| e.error_type == "fk_violation" || e.error_type == "fk_missing_table").collect();
 
-        // Report per-table summary
-        let mut table_names: Vec<_> = tables.keys().collect();
-        table_names.sort();
-        for name in &table_names {
-            let row_count = tables[*name].1.len();
-            println!("{}: {} files", name, row_count);
-        }
+        if !quiet {
+            // Report per-table summary
+            let mut table_names: Vec<_> = tables.keys().collect();
+            table_names.sort();
+            for name in &table_names {
+                let row_count = tables[*name].1.len();
+                println!("{}: {} files", name, row_count);
+            }
 
-        // Report schema errors
-        if !schema_errors.is_empty() {
-            eprintln!("\nSchema errors:");
-            for err in &schema_errors {
-                eprintln!("  {}", err);
+            // Report schema errors
+            if !schema_errors.is_empty() {
+                eprintln!("\nSchema errors:");
+                for err in &schema_errors {
+                    eprintln!("  {}", err);
+                }
+            }
+
+            // Report FK violations
+            if !fk_errors.is_empty() {
+                eprintln!("\nForeign key violations:");
+                for err in &fk_errors {
+                    eprintln!("  {}", err);
+                }
+            }
+
+            if errors.is_empty() {
+                println!("\nAll valid");
+            } else {
+                eprintln!("\n{} schema error(s), {} FK violation(s)", schema_errors.len(), fk_errors.len());
             }
         }
 
-        // Report FK violations
-        if !fk_errors.is_empty() {
-            eprintln!("\nForeign key violations:");
-            for err in &fk_errors {
-                eprintln!("  {}", err);
-            }
-        }
-
-        if errors.is_empty() {
-            println!("\nAll valid");
-        } else {
-            eprintln!("\n{} schema error(s), {} FK violation(s)", schema_errors.len(), fk_errors.len());
+        if !errors.is_empty() {
             std::process::exit(1);
         }
     } else {
         let (schema, rows, errors) = load_table(folder)?;
 
-        if errors.is_empty() {
-            println!("All {} files valid in table '{}'", rows.len(), schema.table);
-        } else {
-            for err in &errors {
-                eprintln!("{}", err);
+        if !quiet {
+            if errors.is_empty() {
+                println!("All {} files valid in table '{}'", rows.len(), schema.table);
+            } else {
+                for err in &errors {
+                    eprintln!("{}", err);
+                }
+                let error_files: std::collections::HashSet<_> =
+                    errors.iter().map(|e| &e.file_path).collect();
+                eprintln!(
+                    "\n{} valid, {} invalid",
+                    rows.len(),
+                    error_files.len()
+                );
             }
-            let error_files: std::collections::HashSet<_> =
-                errors.iter().map(|e| &e.file_path).collect();
-            eprintln!(
-                "\n{} valid, {} invalid",
-                rows.len(),
-                error_files.len()
-            );
+        }
+
+        if !errors.is_empty() {
             std::process::exit(1);
         }
     }

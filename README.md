@@ -560,6 +560,23 @@ duplicate-section.md: Duplicate section 'Body' (appears 2 times)
 
 When pointed at a database directory, also reports foreign key violations (see [Foreign key validation](#foreign-key-validation)).
 
+Exits non-zero on any validation error, so it works as a CI gate or git pre-commit hook:
+
+```bash
+# Silent mode for CI — exit code only, no output
+mdql validate --quiet
+
+# Explicit --strict flag (same behavior as default, accepted for clarity)
+mdql validate --strict examples/
+```
+
+**Pre-commit hook** (`.git/hooks/pre-commit`):
+
+```bash
+#!/bin/sh
+mdql validate --quiet
+```
+
 ### `mdql inspect <folder>`
 
 Show normalized rows.
