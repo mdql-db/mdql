@@ -144,6 +144,11 @@ fn execute_with_fts(
         filtered
     };
 
+    // HAVING filter — apply after aggregation
+    if let Some(ref having) = query.having {
+        result.retain(|row| evaluate(having, row));
+    }
+
     // Sort — resolve ORDER BY aliases against SELECT list
     if let Some(ref order_by) = query.order_by {
         let resolved = resolve_order_aliases(order_by, &query.columns);
@@ -668,6 +673,52 @@ pub fn evaluate_expr(expr: &Expr, row: &Row) -> Value {
                 None => Value::Null,
             }
         }
+        Expr::CurrentDate => {
+            Value::Date(chrono::Local::now().naive_local().date())
+        }
+        Expr::CurrentTimestamp => {
+            Value::DateTime(chrono::Local::now().naive_local())
+        }
+        Expr::DateAdd { date, days } => {
+            let date_val = evaluate_expr(date, row);
+            let days_val = evaluate_expr(days, row);
+            let n = match &days_val {
+                Value::Int(n) => *n,
+                Value::Float(f) => *f as i64,
+                _ => return Value::Null,
+            };
+            let duration = chrono::Duration::days(n);
+            match date_val {
+                Value::Date(d) => {
+                    match d.checked_add_signed(duration) {
+                        Some(result) => Value::Date(result),
+                        None => Value::Null,
+                    }
+                }
+                Value::DateTime(dt) => {
+                    match dt.checked_add_signed(duration) {
+                        Some(result) => Value::DateTime(result),
+                        None => Value::Null,
+                    }
+                }
+                _ => Value::Null,
+            }
+        }
+        Expr::DateDiff { left, right } => {
+            let lv = evaluate_expr(left, row);
+            let rv = evaluate_expr(right, row);
+            let left_date = match &lv {
+                Value::Date(d) => d.and_hms_opt(0, 0, 0).unwrap(),
+                Value::DateTime(dt) => *dt,
+                _ => return Value::Null,
+            };
+            let right_date = match &rv {
+                Value::Date(d) => d.and_hms_opt(0, 0, 0).unwrap(),
+                Value::DateTime(dt) => *dt,
+                _ => return Value::Null,
+            };
+            Value::Int((left_date - right_date).num_days())
+        }
     }
 }
 
@@ -1055,6 +1106,7 @@ mod tests {
             joins: vec![],
             where_clause: None,
             group_by: None,
+            having: None,
             order_by: None,
             limit: None,
         };
@@ -1077,6 +1129,7 @@ mod tests {
                 right_expr: Some(Expr::Literal(SqlValue::Int(5))),
             })),
             group_by: None,
+            having: None,
             order_by: None,
             limit: None,
         };
@@ -1093,6 +1146,7 @@ mod tests {
             joins: vec![],
             where_clause: None,
             group_by: None,
+            having: None,
             order_by: Some(vec![OrderSpec {
                 column: "count".into(),
                 expr: Some(Expr::Column("count".into())),
@@ -1114,6 +1168,7 @@ mod tests {
             joins: vec![],
             where_clause: None,
             group_by: None,
+            having: None,
             order_by: None,
             limit: Some(2),
         };
@@ -1136,6 +1191,7 @@ mod tests {
                 right_expr: None,
             })),
             group_by: None,
+            having: None,
             order_by: None,
             limit: None,
         };
@@ -1162,6 +1218,7 @@ mod tests {
                 right_expr: None,
             })),
             group_by: None,
+            having: None,
             order_by: None,
             limit: None,
         };

@@ -23,6 +23,13 @@ pub enum Expr {
     BinaryOp { left: Box<Expr>, op: ArithOp, right: Box<Expr> },
     UnaryMinus(Box<Expr>),
     Case { whens: Vec<(WhereClause, Box<Expr>)>, else_expr: Option<Box<Expr>> },
+    /// date_expr + INTERVAL n DAY  (negative for subtraction)
+    DateAdd { date: Box<Expr>, days: Box<Expr> },
+    /// DATEDIFF(date1, date2) → integer days
+    DateDiff { left: Box<Expr>, right: Box<Expr> },
+    /// CURRENT_DATE or CURRENT_TIMESTAMP
+    CurrentDate,
+    CurrentTimestamp,
 }
 
 impl Expr {
@@ -52,6 +59,10 @@ impl Expr {
             }
             Expr::UnaryMinus(inner) => format!("-{}", inner.display_name()),
             Expr::Case { .. } => "CASE".to_string(),
+            Expr::DateAdd { date, days } => format!("DATE_ADD({}, {})", date.display_name(), days.display_name()),
+            Expr::DateDiff { left, right } => format!("DATEDIFF({}, {})", left.display_name(), right.display_name()),
+            Expr::CurrentDate => "CURRENT_DATE".to_string(),
+            Expr::CurrentTimestamp => "CURRENT_TIMESTAMP".to_string(),
         }
     }
 }
@@ -155,6 +166,7 @@ pub struct SelectQuery {
     pub joins: Vec<JoinClause>,
     pub where_clause: Option<WhereClause>,
     pub group_by: Option<Vec<String>>,
+    pub having: Option<WhereClause>,
     pub order_by: Option<Vec<OrderSpec>>,
     pub limit: Option<i64>,
 }
@@ -221,10 +233,11 @@ pub enum Statement {
 static KEYWORDS: &[&str] = &[
     "SELECT", "FROM", "WHERE", "AND", "OR", "ORDER", "BY",
     "ASC", "DESC", "LIMIT", "LIKE", "IN", "IS", "NOT", "NULL",
-    "JOIN", "ON", "AS", "GROUP",
+    "JOIN", "ON", "AS", "GROUP", "HAVING",
     "INSERT", "INTO", "VALUES", "UPDATE", "SET", "DELETE",
     "ALTER", "TABLE", "RENAME", "FIELD", "TO", "DROP", "MERGE", "FIELDS",
     "CASE", "WHEN", "THEN", "ELSE", "END",
+    "INTERVAL", "DAY", "DAYS", "CURRENT_DATE", "CURRENT_TIMESTAMP", "DATEDIFF",
 ];
 
 static AGG_FUNCS: &[&str] = &["COUNT", "SUM", "AVG", "MIN", "MAX"];
@@ -420,6 +433,11 @@ impl Parser {
             group_by = Some(cols);
         }
 
+        let mut having = None;
+        if self.match_keyword("HAVING") {
+            having = Some(self.parse_or_expr()?);
+        }
+
         let mut order_by = None;
         if self.match_keyword("ORDER") {
             self.expect("keyword", Some("BY"))?;
@@ -443,6 +461,7 @@ impl Parser {
             joins,
             where_clause,
             group_by,
+            having,
             order_by,
             limit,
         })
@@ -730,6 +749,28 @@ impl Parser {
         let mut left = self.parse_multiplicative()?;
         while self.peek_is_additive_op() {
             let op_tok = self.advance();
+            let is_sub = op_tok.value == "-";
+
+            // Check for INTERVAL keyword: expr +/- INTERVAL n DAY
+            if self.peek().map_or(false, |t| t.token_type == "keyword" && t.value == "INTERVAL") {
+                self.advance(); // consume INTERVAL
+                let days_expr = self.parse_multiplicative()?;
+                // Expect DAY or DAYS
+                if !self.match_keyword("DAY") && !self.match_keyword("DAYS") {
+                    return Err(MdqlError::QueryParse("Expected DAY after INTERVAL value".into()));
+                }
+                let days = if is_sub {
+                    Expr::UnaryMinus(Box::new(days_expr))
+                } else {
+                    days_expr
+                };
+                left = Expr::DateAdd {
+                    date: Box::new(left),
+                    days: Box::new(days),
+                };
+                continue;
+            }
+
             let op = match op_tok.value.as_str() {
                 "+" => ArithOp::Add,
                 "-" => ArithOp::Sub,
@@ -810,6 +851,23 @@ impl Parser {
             }
             "keyword" if t.value == "CASE" => {
                 self.parse_case_expr()
+            }
+            "keyword" if t.value == "CURRENT_DATE" => {
+                self.advance();
+                Ok(Expr::CurrentDate)
+            }
+            "keyword" if t.value == "CURRENT_TIMESTAMP" => {
+                self.advance();
+                Ok(Expr::CurrentTimestamp)
+            }
+            "keyword" if t.value == "DATEDIFF" => {
+                self.advance();
+                self.expect("op", Some("("))?;
+                let left = self.parse_additive()?;
+                self.expect("op", Some(","))?;
+                let right = self.parse_additive()?;
+                self.expect("op", Some(")"))?;
+                Ok(Expr::DateDiff { left: Box::new(left), right: Box::new(right) })
             }
             "op" if t.value == "(" => {
                 self.advance();
@@ -1084,6 +1142,8 @@ impl Parser {
             | "DELETE" | "ALTER" | "TABLE" | "IS" | "NOT" | "IN" | "LIKE"
             | "RENAME" | "FIELD" | "TO" | "DROP" | "MERGE" | "FIELDS"
             | "CASE" | "WHEN" | "THEN" | "ELSE" | "END"
+            | "HAVING" | "INTERVAL" | "DAY" | "DAYS"
+            | "CURRENT_DATE" | "CURRENT_TIMESTAMP" | "DATEDIFF"
         )
     }
 
