@@ -7,6 +7,7 @@ use std::path::Path;
 use regex::Regex;
 use std::sync::LazyLock;
 
+use crate::errors::MdqlError;
 use crate::parser::{normalize_heading};
 use crate::txn::atomic_write;
 
@@ -147,29 +148,27 @@ pub fn drop_frontmatter_key_in_file(
 
     let pattern = Regex::new(&format!(r"^{}\s*:", regex::escape(key))).unwrap();
 
-    let mut key_start = None;
-    let mut key_end = None;
+    let mut key_range = None;
     for i in bounds.0..bounds.1 {
         if pattern.is_match(&lines[i]) {
-            key_start = Some(i);
-            key_end = Some(i + 1);
-            while key_end.unwrap() < bounds.1
-                && (lines[key_end.unwrap()].starts_with(' ')
-                    || lines[key_end.unwrap()].starts_with('\t'))
+            let mut end = i + 1;
+            while end < bounds.1
+                && (lines[end].starts_with(' ') || lines[end].starts_with('\t'))
             {
-                key_end = Some(key_end.unwrap() + 1);
+                end += 1;
             }
+            key_range = Some((i, end));
             break;
         }
     }
 
-    match (key_start, key_end) {
-        (Some(start), Some(end)) => {
+    match key_range {
+        Some((start, end)) => {
             lines.drain(start..end);
             atomic_write(path, &lines.join("\n"))?;
             Ok(true)
         }
-        _ => Ok(false),
+        None => Ok(false),
     }
 }
 
@@ -334,7 +333,10 @@ pub fn update_schema(
     let mut fm: serde_yaml::Value =
         serde_yaml::from_str(&fm_text).unwrap_or(serde_yaml::Value::Mapping(serde_yaml::Mapping::new()));
 
-    let fm_map = fm.as_mapping_mut().unwrap();
+    let fm_map = match fm.as_mapping_mut() {
+        Some(m) => m,
+        None => return Err(MdqlError::General("schema frontmatter is not a YAML mapping".into())),
+    };
 
     // Frontmatter field operations
     let fm_key = serde_yaml::Value::String("frontmatter".into());

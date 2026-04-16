@@ -135,7 +135,12 @@ pub fn load_schema(folder: &Path) -> crate::errors::Result<Schema> {
     let fm = &parsed.raw_frontmatter;
     validate_meta_schema(fm, &schema_path)?;
 
-    let fm_map = fm.as_mapping().unwrap();
+    let fm_map = fm.as_mapping().ok_or_else(|| {
+        MdqlError::SchemaInvalid(format!(
+            "{}: frontmatter must be a YAML mapping",
+            MDQL_FILENAME
+        ))
+    })?;
 
     // Build field definitions
     let mut frontmatter_defs: IndexMap<String, FieldDef> = IndexMap::new();

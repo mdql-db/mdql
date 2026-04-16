@@ -998,9 +998,11 @@ impl Database {
     }
 
     pub fn table(&mut self, name: &str) -> crate::errors::Result<&mut Table> {
-        if !self.tables.contains_key(name) {
+        if self.tables.contains_key(name) {
+            Ok(self.tables.get_mut(name).expect("key verified above"))
+        } else {
             let available: Vec<String> = self.tables.keys().cloned().collect();
-            return Err(MdqlError::General(format!(
+            Err(MdqlError::General(format!(
                 "Table '{}' not found in database '{}'. Available: {}",
                 name,
                 self.config.name,
@@ -1009,8 +1011,7 @@ impl Database {
                 } else {
                     available.join(", ")
                 }
-            )));
+            )))
         }
-        Ok(self.tables.get_mut(name).unwrap())
     }
 }
