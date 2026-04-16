@@ -417,6 +417,45 @@ mdql query examples/strategies/ \
   "SELECT COUNT(*) total, SUM(CASE WHEN mechanism >= 7 THEN 1 ELSE 0 END) high_mechanism FROM strategies"
 ```
 
+### GROUP BY, HAVING, and aggregation
+
+```bash
+# Count by status
+mdql query examples/strategies/ \
+  "SELECT status, COUNT(*) cnt FROM strategies GROUP BY status"
+
+# HAVING filters groups after aggregation
+mdql query examples/strategies/ \
+  "SELECT status, COUNT(*) cnt FROM strategies GROUP BY status HAVING COUNT(*) > 10"
+
+# Conditional aggregation with CASE WHEN
+mdql query examples/strategies/ \
+  "SELECT COUNT(*) total, SUM(CASE WHEN mechanism >= 7 THEN 1 ELSE 0 END) high_mechanism FROM strategies"
+```
+
+Supported aggregate functions: `COUNT(*)`, `COUNT(col)`, `SUM(expr)`, `AVG(expr)`, `MIN(expr)`, `MAX(expr)`.
+
+### Date arithmetic
+
+```bash
+# Rows created in the last 30 days
+mdql query examples/strategies/ \
+  "SELECT title, created FROM strategies WHERE created >= CURRENT_DATE - INTERVAL 30 DAYS"
+
+# Days since creation
+mdql query examples/strategies/ \
+  "SELECT title, DATEDIFF(CURRENT_DATE, created) days_old FROM strategies ORDER BY days_old DESC LIMIT 5"
+
+# Future date calculation
+mdql query examples/strategies/ \
+  "SELECT title, modified + INTERVAL 7 DAY review_due FROM strategies"
+```
+
+- `CURRENT_DATE` — today's date
+- `CURRENT_TIMESTAMP` — current datetime
+- `DATEDIFF(date1, date2)` — returns number of days between two dates (date1 - date2)
+- `date + INTERVAL N DAY` / `date - INTERVAL N DAYS` — add or subtract days from a date or datetime
+
 ### JOINs
 
 Point at the database directory (parent of table folders) for cross-table queries. Supports two or more tables:
@@ -642,7 +681,9 @@ Schema types map to pandas dtypes:
 | `float`    | `Float64` (nullable) |
 | `bool`     | `boolean` (nullable) |
 | `date`     | `datetime64[ns]`   |
+| `datetime` | `datetime64[ns]`   |
 | `string[]` | Python lists       |
+| `dict`     | Python dicts       |
 
 Validation errors are handled via the `errors` parameter: `"warn"` (default), `"raise"`, or `"ignore"`.
 
