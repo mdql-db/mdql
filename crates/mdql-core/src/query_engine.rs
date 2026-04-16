@@ -597,7 +597,10 @@ pub fn evaluate_expr(expr: &Expr, row: &Row) -> Value {
             if let Some(val) = row.get(name) {
                 return val.clone();
             }
-            if let Some((dict_col, dict_key)) = name.split_once('.') {
+            // Try all possible dot splits for dict access (e.g. "s.params.key")
+            for (i, _) in name.match_indices('.') {
+                let dict_col = &name[..i];
+                let dict_key = &name[i + 1..];
                 if let Some(Value::Dict(map)) = row.get(dict_col) {
                     return map.get(dict_key).cloned().unwrap_or(Value::Null);
                 }
