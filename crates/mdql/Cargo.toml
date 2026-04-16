@@ -16,8 +16,8 @@ name = "mdql"
 path = "src/main.rs"
 
 [dependencies]
-mdql-core = { path = "../mdql-core", version = "0.4.0" }
-mdql-web = { path = "../mdql-web", version = "0.4.0" }
+mdql-core = { path = "../mdql-core", version = "0.4.1" }
+mdql-web = { path = "../mdql-web", version = "0.4.1" }
 clap = { version = "4", features = ["derive"] }
 comfy-table = "7"
 serde_json = "1"

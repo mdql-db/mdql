@@ -1052,7 +1052,7 @@ checksum = "47e1ffaa40ddd1f3ed91f717a33c8c0ee23fff369e3aa8772b9605cc1d22f4c3"
 
 [[package]]
 name = "mdql"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "clap",
  "comfy-table",
@@ -1067,7 +1067,7 @@ dependencies = [
 
 [[package]]
 name = "mdql-core"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "chrono",
  "fs2",
@@ -1088,7 +1088,7 @@ dependencies = [
 
 [[package]]
 name = "mdql-python"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "chrono",
  "indexmap",
@@ -1099,7 +1099,7 @@ dependencies = [
 
 [[package]]
 name = "mdql-web"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "axum",
  "mdql-core",
