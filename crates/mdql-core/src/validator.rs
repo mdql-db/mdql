@@ -462,18 +462,24 @@ pub fn validate_foreign_keys(
                 .map(|v| format!("{}/{}", fk.from_table, v.to_display_string()))
                 .unwrap_or_else(|| fk.from_table.clone());
 
-            let value_str = value.to_display_string();
-            if !valid_values.contains(&value_str) {
-                errors.push(ValidationError {
-                    file_path,
-                    error_type: "fk_violation".to_string(),
-                    field: Some(fk.from_column.clone()),
-                    message: format!(
-                        "{} = '{}' not found in {}.{}",
-                        fk.from_column, value_str, fk.to_table, fk.to_column
-                    ),
-                    line_number: None,
-                });
+            let values_to_check: Vec<String> = match value {
+                Value::List(items) => items.iter().map(|s| s.clone()).collect(),
+                _ => vec![value.to_display_string()],
+            };
+
+            for value_str in &values_to_check {
+                if !valid_values.contains(value_str) {
+                    errors.push(ValidationError {
+                        file_path: file_path.clone(),
+                        error_type: "fk_violation".to_string(),
+                        field: Some(fk.from_column.clone()),
+                        message: format!(
+                            "{} = '{}' not found in {}.{}",
+                            fk.from_column, value_str, fk.to_table, fk.to_column
+                        ),
+                        line_number: None,
+                    });
+                }
             }
         }
     }
@@ -702,5 +708,57 @@ mod tests {
         let errors = validate_foreign_keys(&config, &tables);
         assert_eq!(errors.len(), 1);
         assert_eq!(errors[0].error_type, "fk_missing_table");
+    }
+
+    #[test]
+    fn test_fk_string_array_valid() {
+        let mut tables = make_fk_tables();
+        // Add a row with a string[] FK where both values exist
+        let array_row = Row::from([
+            ("path".into(), Value::String("bt-multi.md".into())),
+            ("strategy".into(), Value::List(vec![
+                "alpha.md".into(),
+                "beta.md".into(),
+            ])),
+        ]);
+        tables.get_mut("backtests").unwrap().1.push(array_row);
+
+        let config = DatabaseConfig {
+            name: "test".into(),
+            foreign_keys: vec![ForeignKey {
+                from_table: "backtests".into(),
+                from_column: "strategy".into(),
+                to_table: "strategies".into(),
+                to_column: "path".into(),
+            }],
+        };
+        let errors = validate_foreign_keys(&config, &tables);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn test_fk_string_array_one_invalid() {
+        let mut tables = make_fk_tables();
+        let array_row = Row::from([
+            ("path".into(), Value::String("bt-multi.md".into())),
+            ("strategy".into(), Value::List(vec![
+                "alpha.md".into(),
+                "nonexistent.md".into(),
+            ])),
+        ]);
+        tables.get_mut("backtests").unwrap().1.push(array_row);
+
+        let config = DatabaseConfig {
+            name: "test".into(),
+            foreign_keys: vec![ForeignKey {
+                from_table: "backtests".into(),
+                from_column: "strategy".into(),
+                to_table: "strategies".into(),
+                to_column: "path".into(),
+            }],
+        };
+        let errors = validate_foreign_keys(&config, &tables);
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0].message.contains("nonexistent.md"));
     }
 }
