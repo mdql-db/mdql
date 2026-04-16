@@ -8,13 +8,13 @@ use crate::schema::Schema;
 /// Index for a single table's frontmatter fields.
 /// Each indexed field maps values → set of file paths.
 #[derive(Debug)]
-pub struct TableIndex {
+pub(crate) struct TableIndex {
     indexes: HashMap<String, BTreeMap<IndexKey, Vec<String>>>,
 }
 
 /// Wrapper around Value that implements Ord for use as BTreeMap key.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum IndexKey {
+pub(crate) enum IndexKey {
     String(String),
     Int(i64),
     Bool(bool),
@@ -69,6 +69,7 @@ fn value_to_key(v: &Value) -> Option<IndexKey> {
     }
 }
 
+#[allow(dead_code)]
 impl TableIndex {
     /// Build indexes for all frontmatter fields.
     pub fn build(rows: &[Row], schema: &Schema) -> Self {

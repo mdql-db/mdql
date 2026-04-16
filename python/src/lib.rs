@@ -85,8 +85,12 @@ fn py_to_value(obj: &Bound<'_, pyo3::PyAny>) -> PyResult<Value> {
     if let Ok(list) = obj.downcast::<PyList>() {
         let items: Vec<String> = list
             .iter()
-            .filter_map(|item| item.extract::<String>().ok())
-            .collect();
+            .map(|item| {
+                item.extract::<String>().or_else(|_| {
+                    Ok(item.str()?.to_string())
+                })
+            })
+            .collect::<PyResult<Vec<String>>>()?;
         return Ok(Value::List(items));
     }
     Ok(Value::String(obj.str()?.to_string()))

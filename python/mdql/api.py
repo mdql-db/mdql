@@ -24,8 +24,15 @@ class Table:
         self.path = Path(path)
         self._rust = RustTable(str(self.path))
 
+    @classmethod
+    def _from_rust(cls, rust_table: RustTable) -> Table:
+        t = cls.__new__(cls)
+        t.path = Path(rust_table.path)
+        t._rust = rust_table
+        return t
+
     @property
-    def schema(self):
+    def schema(self) -> "Schema":
         from mdql.schema import Schema
         return Schema._from_dict(self._rust.schema_data())
 
@@ -99,7 +106,7 @@ class Table:
         except RuntimeError as e:
             raise MdqlError(str(e)) from None
 
-    def load(self, *, where: dict | str | None = None) -> tuple[list[dict], list]:
+    def load(self, *, where: dict | str | None = None) -> tuple[list[dict], list[str]]:
         try:
             rows, errors = self._rust.load(where=where)
             return list(rows), list(errors)
@@ -116,11 +123,14 @@ class Table:
         except RuntimeError as e:
             raise MdqlError(str(e)) from None
 
-    def validate(self) -> list:
+    def validate(self) -> list[str]:
         try:
             return list(self._rust.validate())
         except RuntimeError as e:
             raise MdqlError(str(e)) from None
+
+    def __repr__(self) -> str:
+        return f"Table({str(self.path)!r})"
 
 
 class Database:
@@ -149,10 +159,7 @@ class Database:
     def table(self, name: str) -> Table:
         try:
             rust_table = self._rust.table(name)
-            t = Table.__new__(Table)
-            t.path = Path(rust_table.path)
-            t._rust = rust_table
-            return t
+            return Table._from_rust(rust_table)
         except (ValueError, RuntimeError) as e:
             raise MdqlError(str(e)) from None
 
@@ -163,3 +170,6 @@ class Database:
             return list(rows), list(columns)
         except (ValueError, RuntimeError) as e:
             raise MdqlError(str(e)) from None
+
+    def __repr__(self) -> str:
+        return f"Database({str(self.path)!r})"

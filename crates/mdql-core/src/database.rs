@@ -20,6 +20,29 @@ pub struct DatabaseConfig {
     pub foreign_keys: Vec<ForeignKey>,
 }
 
+pub fn is_database_dir(folder: &Path) -> bool {
+    let mdql_file = folder.join(MDQL_FILENAME);
+    if !mdql_file.exists() {
+        return false;
+    }
+    if let Ok(text) = std::fs::read_to_string(&mdql_file) {
+        if let Some(fm_text) = text
+            .strip_prefix("---\n")
+            .and_then(|rest| rest.split_once("\n---").map(|(fm, _)| fm))
+        {
+            if let Ok(val) = serde_yaml::from_str::<serde_yaml::Value>(fm_text) {
+                if let Some(m) = val.as_mapping() {
+                    return m
+                        .get(&serde_yaml::Value::String("type".into()))
+                        .and_then(|v| v.as_str())
+                        == Some("database");
+                }
+            }
+        }
+    }
+    false
+}
+
 pub fn load_database_config(db_dir: &Path) -> crate::errors::Result<DatabaseConfig> {
     let db_path = db_dir.join(MDQL_FILENAME);
     if !db_path.exists() {

@@ -20,7 +20,7 @@ from mdql.errors import QueryParseError
 
 
 class Query:
-    """Wrapper around the Rust Query that exposes .where as an attribute."""
+    """Wrapper around the Rust Query."""
 
     def __init__(self, rust_query: _RustQuery):
         self._inner = rust_query
@@ -38,15 +38,8 @@ class Query:
         return self._inner.table_alias
 
     @property
-    def where_(self):
+    def where_clause(self):
         return self._inner.where_clause
-
-    # Python can't have 'where' as an attribute name in normal code,
-    # but tests access it via q.where. We use __getattr__ to handle that.
-    def __getattr__(self, name):
-        if name == "where":
-            return self._inner.where_clause
-        raise AttributeError(f"'Query' object has no attribute '{name}'")
 
     @property
     def order_by(self):

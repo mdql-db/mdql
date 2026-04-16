@@ -4,13 +4,13 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 
-use mdql_core::api::{Database, Table, coerce_cli_value};
+use mdql_core::api::{Table, coerce_cli_value};
+use mdql_core::database::is_database_dir;
 use mdql_core::errors::MdqlError;
+use mdql_core::executor::{self, QueryResult};
 use mdql_core::loader::load_table;
 use mdql_core::model::Value;
 use mdql_core::projector::format_results;
-use mdql_core::query_engine::{execute_join_query, execute_query};
-use mdql_core::query_parser::{Statement, parse_query};
 use mdql_core::schema::{MDQL_FILENAME, load_schema};
 
 #[derive(Parser)]
@@ -107,32 +107,6 @@ enum Commands {
     },
 }
 
-fn is_database_dir(folder: &std::path::Path) -> bool {
-    let mdql_file = folder.join(MDQL_FILENAME);
-    if !mdql_file.exists() {
-        return false;
-    }
-    if let Ok(text) = std::fs::read_to_string(&mdql_file) {
-        let lines: Vec<&str> = text.split('\n').collect();
-        if !lines.is_empty() && lines[0].trim() == "---" {
-            for i in 1..lines.len() {
-                if lines[i].trim() == "---" {
-                    let fm_text = lines[1..i].join("\n");
-                    if let Ok(val) = serde_yaml::from_str::<serde_yaml::Value>(&fm_text) {
-                        if let Some(m) = val.as_mapping() {
-                            return m
-                                .get(&serde_yaml::Value::String("type".into()))
-                                .and_then(|v| v.as_str())
-                                == Some("database");
-                        }
-                    }
-                    break;
-                }
-            }
-        }
-    }
-    false
-}
 
 fn discover_db(start: Option<&std::path::Path>) -> Option<PathBuf> {
     // Walk up from start looking for _mdql.md
@@ -349,70 +323,16 @@ fn cmd_query(
     format: &str,
     truncate: usize,
 ) -> Result<(), MdqlError> {
-    let stmt = parse_query(sql)?;
-    let is_db = is_database_dir(folder);
-
-    match stmt {
-        Statement::Select(ref q) => {
-            if !q.joins.is_empty() {
-                let (_db_config, tables, errors) =
-                    mdql_core::loader::load_database(folder)?;
-                print_fk_warnings(&errors);
-                let (result_rows, result_columns) = execute_join_query(q, &tables)?;
-                println!(
-                    "{}",
-                    format_results(&result_rows, Some(&result_columns), format, truncate)
-                );
-            } else if is_db {
-                let (_db_config, tables, errors) =
-                    mdql_core::loader::load_database(folder)?;
-                print_fk_warnings(&errors);
-                let (schema, rows) = tables
-                    .get(&q.table)
-                    .ok_or_else(|| {
-                        MdqlError::QueryExecution(format!(
-                            "table '{}' not found in database",
-                            q.table
-                        ))
-                    })?;
-                let (result_rows, result_columns) = execute_query(q, rows, schema)?;
-                println!(
-                    "{}",
-                    format_results(&result_rows, Some(&result_columns), format, truncate)
-                );
-            } else {
-                let (schema, rows, _errors) = load_table(folder)?;
-                let (result_rows, result_columns) = execute_query(q, &rows, &schema)?;
-                println!(
-                    "{}",
-                    format_results(&result_rows, Some(&result_columns), format, truncate)
-                );
-            }
+    let (result, warnings) = executor::execute(folder, sql)?;
+    print_fk_warnings(&warnings);
+    match result {
+        QueryResult::Rows { rows, columns } => {
+            println!("{}", format_results(&rows, Some(&columns), format, truncate));
         }
-        _ => {
-            // Write operations go through Table API
-            let mut table = if is_db {
-                let mut db = Database::new(folder)?;
-                let table_name = match &stmt {
-                    Statement::Insert(q) => q.table.clone(),
-                    Statement::Update(q) => q.table.clone(),
-                    Statement::Delete(q) => q.table.clone(),
-                    Statement::AlterRename(q) => q.table.clone(),
-                    Statement::AlterDrop(q) => q.table.clone(),
-                    Statement::AlterMerge(q) => q.table.clone(),
-                    _ => unreachable!(),
-                };
-                // We need to get the table path, then create a standalone Table
-                let t = db.table(&table_name)?;
-                Table::new(&t.path)?
-            } else {
-                Table::new(folder)?
-            };
-            let result = table.execute_sql(sql)?;
-            println!("{}", result);
+        QueryResult::Message(msg) => {
+            println!("{}", msg);
         }
     }
-
     Ok(())
 }
 
@@ -889,52 +809,17 @@ fn cmd_repl(db_path: &std::path::Path) -> Result<(), MdqlError> {
     Ok(())
 }
 
-fn exec_repl_query(folder: &std::path::Path, sql: &str, is_db: bool) -> Result<(), MdqlError> {
-    let stmt = parse_query(sql)?;
-
-    match stmt {
-        Statement::Select(ref q) => {
-            if !q.joins.is_empty() {
-                let (_, tables, errors) = mdql_core::loader::load_database(folder)?;
-                print_fk_warnings(&errors);
-                let (rows, cols) = execute_join_query(q, &tables)?;
-                println!("{}", format_results(&rows, Some(&cols), "table", 0));
-            } else if is_db {
-                let (_, tables, errors) = mdql_core::loader::load_database(folder)?;
-                print_fk_warnings(&errors);
-                let (schema, rows) = tables
-                    .get(&q.table)
-                    .ok_or_else(|| MdqlError::QueryExecution(format!("table '{}' not found", q.table)))?;
-                let (result_rows, cols) = execute_query(q, rows, schema)?;
-                println!("{}", format_results(&result_rows, Some(&cols), "table", 0));
-            } else {
-                let (schema, rows, _) = load_table(folder)?;
-                let (result_rows, cols) = execute_query(q, &rows, &schema)?;
-                println!("{}", format_results(&result_rows, Some(&cols), "table", 0));
-            }
+fn exec_repl_query(folder: &std::path::Path, sql: &str, _is_db: bool) -> Result<(), MdqlError> {
+    let (result, warnings) = executor::execute(folder, sql)?;
+    print_fk_warnings(&warnings);
+    match result {
+        QueryResult::Rows { rows, columns } => {
+            println!("{}", format_results(&rows, Some(&columns), "table", 0));
         }
-        _ => {
-            let mut table = if is_db {
-                let mut db = Database::new(folder)?;
-                let table_name = match &stmt {
-                    Statement::Insert(q) => q.table.clone(),
-                    Statement::Update(q) => q.table.clone(),
-                    Statement::Delete(q) => q.table.clone(),
-                    Statement::AlterRename(q) => q.table.clone(),
-                    Statement::AlterDrop(q) => q.table.clone(),
-                    Statement::AlterMerge(q) => q.table.clone(),
-                    _ => unreachable!(),
-                };
-                let t = db.table(&table_name)?;
-                Table::new(&t.path)?
-            } else {
-                Table::new(folder)?
-            };
-            let result = table.execute_sql(sql)?;
-            println!("{}", result);
+        QueryResult::Message(msg) => {
+            println!("{}", msg);
         }
     }
-
     Ok(())
 }
 

@@ -16,3 +16,4 @@ pub mod index;
 pub mod cache;
 pub mod search;
 pub mod watcher;
+pub mod executor;

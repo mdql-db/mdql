@@ -12,13 +12,14 @@ use crate::errors::{MdqlError, Result};
 use crate::model::{Row, Value};
 
 /// Full-text search engine for a single table's section content.
-pub struct TableSearcher {
+pub(crate) struct TableSearcher {
     index: Index,
     schema: TantivySchema,
     path_field: tantivy::schema::Field,
     section_fields: HashMap<String, tantivy::schema::Field>,
 }
 
+#[allow(dead_code)]
 impl TableSearcher {
     /// Build a Tantivy index from rows.
     /// `section_names` are the section column names to index.

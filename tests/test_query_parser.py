@@ -36,55 +36,55 @@ class TestBasicQueries:
 class TestWhere:
     def test_equality(self):
         q = parse_query("SELECT title FROM notes WHERE author = 'Rasmus'")
-        assert isinstance(q.where, Comparison)
-        assert q.where.column == "author"
-        assert q.where.op == "="
-        assert q.where.value == "Rasmus"
+        assert isinstance(q.where_clause, Comparison)
+        assert q.where_clause.column == "author"
+        assert q.where_clause.op == "="
+        assert q.where_clause.value == "Rasmus"
 
     def test_not_equal(self):
         q = parse_query("SELECT title FROM notes WHERE status != 'draft'")
-        assert q.where.op == "!="
+        assert q.where_clause.op == "!="
 
     def test_numeric_comparison(self):
         q = parse_query("SELECT title FROM s WHERE mechanism > 5")
-        assert q.where.op == ">"
-        assert q.where.value == 5
+        assert q.where_clause.op == ">"
+        assert q.where_clause.value == 5
 
     def test_like(self):
         q = parse_query("SELECT title FROM notes WHERE title LIKE '%test%'")
-        assert q.where.op == "LIKE"
-        assert q.where.value == "%test%"
+        assert q.where_clause.op == "LIKE"
+        assert q.where_clause.value == "%test%"
 
     def test_in(self):
         q = parse_query("SELECT title FROM notes WHERE status IN ('draft', 'approved')")
-        assert q.where.op == "IN"
-        assert q.where.value == ["draft", "approved"]
+        assert q.where_clause.op == "IN"
+        assert q.where_clause.value == ["draft", "approved"]
 
     def test_is_null(self):
         q = parse_query("SELECT title FROM notes WHERE tags IS NULL")
-        assert q.where.op == "IS NULL"
+        assert q.where_clause.op == "IS NULL"
 
     def test_is_not_null(self):
         q = parse_query("SELECT title FROM notes WHERE tags IS NOT NULL")
-        assert q.where.op == "IS NOT NULL"
+        assert q.where_clause.op == "IS NOT NULL"
 
     def test_and(self):
         q = parse_query("SELECT title FROM s WHERE mechanism > 5 AND safety > 3")
-        assert isinstance(q.where, BoolOp)
-        assert q.where.op == "AND"
+        assert isinstance(q.where_clause, BoolOp)
+        assert q.where_clause.op == "AND"
 
     def test_or(self):
         q = parse_query("SELECT title FROM s WHERE status = 'LIVE' OR status = 'KILLED'")
-        assert isinstance(q.where, BoolOp)
-        assert q.where.op == "OR"
+        assert isinstance(q.where_clause, BoolOp)
+        assert q.where_clause.op == "OR"
 
     def test_and_binds_tighter_than_or(self):
         q = parse_query("SELECT * FROM s WHERE a = 1 OR b = 2 AND c = 3")
         # Should parse as: a=1 OR (b=2 AND c=3)
-        assert isinstance(q.where, BoolOp)
-        assert q.where.op == "OR"
-        assert isinstance(q.where.right, BoolOp)
-        assert q.where.right.op == "AND"
+        assert isinstance(q.where_clause, BoolOp)
+        assert q.where_clause.op == "OR"
+        assert isinstance(q.where_clause.right, BoolOp)
+        assert q.where_clause.right.op == "AND"
 
 
 class TestOrderByAndLimit:
@@ -109,7 +109,7 @@ class TestOrderByAndLimit:
             "SELECT title, composite FROM s WHERE mechanism > 3 ORDER BY composite DESC LIMIT 5"
         )
         assert q.columns == ["title", "composite"]
-        assert q.where is not None
+        assert q.where_clause is not None
         assert q.order_by == [OrderSpec("composite", True)]
         assert q.limit == 5
 
@@ -135,7 +135,7 @@ class TestJoin:
             "WHERE b.status = 'pass'"
         )
         assert len(q.joins) == 1
-        assert q.where is not None
+        assert q.where_clause is not None
 
     def test_join_with_order_limit(self):
         q = parse_query(

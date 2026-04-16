@@ -13,11 +13,10 @@ use rust_embed::Embed;
 use serde::{Deserialize, Serialize};
 use tower_http::cors::CorsLayer;
 
-use mdql_core::api::Table;
+use mdql_core::executor::{self, QueryResult};
 use mdql_core::loader;
 use mdql_core::model::{Row, Value};
 use mdql_core::projector::format_results;
-use mdql_core::query_parser::{parse_query, Statement};
 use mdql_core::schema::Schema;
 
 #[derive(Embed)]
@@ -228,148 +227,64 @@ async fn execute_query(
     State(state): State<AppState>,
     Json(req): Json<QueryRequest>,
 ) -> Json<QueryResponse> {
-    let tables = state.tables.lock().unwrap();
+    let result = executor::execute(&state.db_path, &req.sql);
 
-    // Parse the SQL
-    let stmt = match parse_query(&req.sql) {
-        Ok(s) => s,
-        Err(e) => {
-            return Json(QueryResponse {
-                columns: None,
-                rows: None,
-                output: None,
-                error: Some(format!("Parse error: {}", e)),
-                row_count: None,
-            });
-        }
-    };
-
-    match stmt {
-        Statement::Select(query) => {
-            // Determine table
-            let table_name = &query.table;
-            let (schema, rows) = match tables.get(table_name.as_str()) {
-                Some(t) => t,
-                None => {
-                    return Json(QueryResponse {
-                        columns: None,
-                        rows: None,
-                        output: None,
-                        error: Some(format!("Unknown table '{}'", table_name)),
-                        row_count: None,
-                    });
-                }
-            };
-
-            // Handle JOINs
-            let result = if !query.joins.is_empty() {
-                mdql_core::query_engine::execute_join_query(&query, &tables)
-            } else {
-                mdql_core::query_engine::execute_query(&query, rows, schema)
-            };
-
-            match result {
-                Ok((result_rows, columns)) => {
-                    if req.format == "json" || req.format == "csv" {
-                        let output = format_results(
-                            &result_rows,
-                            Some(&columns),
-                            &req.format,
-                            80,
-                        );
-                        Json(QueryResponse {
-                            columns: None,
-                            rows: None,
-                            output: Some(output),
-                            error: None,
-                            row_count: Some(result_rows.len()),
-                        })
-                    } else {
-                        let json_rows: Vec<HashMap<String, serde_json::Value>> = result_rows
-                            .iter()
-                            .map(|row| {
-                                columns
-                                    .iter()
-                                    .map(|col| {
-                                        let val = row.get(col).unwrap_or(&Value::Null);
-                                        (col.clone(), value_to_json(val))
-                                    })
-                                    .collect()
-                            })
-                            .collect();
-
-                        Json(QueryResponse {
-                            columns: Some(columns),
-                            rows: Some(json_rows.clone()),
-                            output: None,
-                            error: None,
-                            row_count: Some(json_rows.len()),
-                        })
-                    }
-                }
-                Err(e) => Json(QueryResponse {
+    match result {
+        Ok((QueryResult::Rows { rows, columns }, _warnings)) => {
+            if req.format == "json" || req.format == "csv" {
+                let output = format_results(&rows, Some(&columns), &req.format, 80);
+                Json(QueryResponse {
                     columns: None,
                     rows: None,
+                    output: Some(output),
+                    error: None,
+                    row_count: Some(rows.len()),
+                })
+            } else {
+                let json_rows: Vec<HashMap<String, serde_json::Value>> = rows
+                    .iter()
+                    .map(|row| {
+                        columns
+                            .iter()
+                            .map(|col| {
+                                let val = row.get(col).unwrap_or(&Value::Null);
+                                (col.clone(), value_to_json(val))
+                            })
+                            .collect()
+                    })
+                    .collect();
+
+                Json(QueryResponse {
+                    columns: Some(columns),
+                    rows: Some(json_rows.clone()),
                     output: None,
-                    error: Some(e.to_string()),
-                    row_count: None,
-                }),
+                    error: None,
+                    row_count: Some(json_rows.len()),
+                })
             }
         }
-        _ => {
-            // For write operations, use the Table API
-            drop(tables); // Release lock before write operations
-            let result = execute_write(&state, &req.sql);
+        Ok((QueryResult::Message(msg), _warnings)) => {
+            // Reload tables after write
+            if let Ok(new_tables) = load_all_tables(&state.db_path) {
+                let mut tables = state.tables.lock().unwrap();
+                *tables = new_tables;
+            }
             Json(QueryResponse {
                 columns: None,
                 rows: None,
-                output: Some(result.clone()),
-                error: if result.starts_with("Error") {
-                    Some(result)
-                } else {
-                    None
-                },
+                output: Some(msg),
+                error: None,
                 row_count: None,
             })
         }
+        Err(e) => Json(QueryResponse {
+            columns: None,
+            rows: None,
+            output: None,
+            error: Some(e.to_string()),
+            row_count: None,
+        }),
     }
-}
-
-fn execute_write(state: &AppState, sql: &str) -> String {
-    // Find the table in the db_path
-    let stmt = match parse_query(sql) {
-        Ok(s) => s,
-        Err(e) => return format!("Error: {}", e),
-    };
-
-    let table_name = match &stmt {
-        Statement::Insert(q) => q.table.clone(),
-        Statement::Update(q) => q.table.clone(),
-        Statement::Delete(q) => q.table.clone(),
-        Statement::AlterRename(q) => q.table.clone(),
-        Statement::AlterDrop(q) => q.table.clone(),
-        Statement::AlterMerge(q) => q.table.clone(),
-        _ => return "Error: unsupported statement type".into(),
-    };
-
-    let table_path = state.db_path.join(&table_name);
-    let mut table = match Table::new(&table_path) {
-        Ok(t) => t,
-        Err(e) => return format!("Error: {}", e),
-    };
-
-    let result = match table.execute_sql(sql) {
-        Ok(s) => s,
-        Err(e) => format!("Error: {}", e),
-    };
-
-    // Reload tables after write
-    if let Ok(new_tables) = load_all_tables(&state.db_path) {
-        let mut tables = state.tables.lock().unwrap();
-        *tables = new_tables;
-    }
-
-    result
 }
 
 async fn get_fk_errors(State(state): State<AppState>) -> Json<serde_json::Value> {

@@ -18,8 +18,8 @@ pub fn execute_query(
     execute(query, rows, None)
 }
 
-/// Execute a query with optional B-tree index and FTS searcher.
-pub fn execute_query_indexed(
+#[allow(dead_code)]
+pub(crate) fn execute_query_indexed(
     query: &SelectQuery,
     rows: &[Row],
     schema: &Schema,
@@ -36,8 +36,7 @@ pub fn execute_query_indexed(
     execute_with_fts(query, rows, index, &fts_results)
 }
 
-/// Collect FTS results for LIKE comparisons on section columns.
-/// Returns a map from (column, pattern) → set of matching paths.
+#[allow(dead_code)]
 fn collect_fts_results(
     clause: &WhereClause,
     schema: &Schema,
@@ -48,6 +47,7 @@ fn collect_fts_results(
     results
 }
 
+#[allow(dead_code)]
 fn collect_fts_results_inner(
     clause: &WhereClause,
     schema: &Schema,

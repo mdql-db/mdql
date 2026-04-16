@@ -228,6 +228,20 @@ pub enum Statement {
     AlterMerge(AlterMergeFieldsQuery),
 }
 
+impl Statement {
+    pub fn table_name(&self) -> &str {
+        match self {
+            Statement::Select(q) => &q.table,
+            Statement::Insert(q) => &q.table,
+            Statement::Update(q) => &q.table,
+            Statement::Delete(q) => &q.table,
+            Statement::AlterRename(q) => &q.table,
+            Statement::AlterDrop(q) => &q.table,
+            Statement::AlterMerge(q) => &q.table,
+        }
+    }
+}
+
 // ── Tokenizer ──────────────────────────────────────────────────────────────
 
 static KEYWORDS: &[&str] = &[
