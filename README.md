@@ -209,6 +209,9 @@ mdql query examples/ "SELECT title, mechanism FROM live ORDER BY mechanism DESC"
 
 # Drop a view
 mdql query examples/ "DROP VIEW live"
+
+# Views support the full query syntax: GROUP BY, HAVING, aggregate arithmetic
+mdql query examples/ "CREATE VIEW positions AS SELECT token, SUM(CASE WHEN side = 'BUY' THEN size ELSE 0 END) - SUM(CASE WHEN side = 'SELL' THEN size ELSE 0 END) as net FROM orders GROUP BY token HAVING net > 0"
 ```
 
 Views require a database directory (not a single table folder). They are stored in the `views:` section of the database-level `_mdql.md` and re-executed dynamically on each query — no cached data on disk.
@@ -485,7 +488,30 @@ mdql query examples/strategies/ \
   "SELECT status, COUNT(*) cnt FROM strategies GROUP BY status HAVING COUNT(*) > 10"
 ```
 
+Aggregate arithmetic — combine aggregates with `+`, `-`, `*`, `/`:
+
+```bash
+# Net position per token
+mdql query examples/ \
+  "SELECT token, SUM(CASE WHEN side = 'BUY' THEN size ELSE 0 END) - SUM(CASE WHEN side = 'SELL' THEN size ELSE 0 END) as net FROM orders GROUP BY token"
+
+# Average via SUM/COUNT
+mdql query examples/ \
+  "SELECT SUM(mechanism) / COUNT(*) as avg_mechanism FROM strategies"
+```
+
 Supported aggregate functions: `COUNT(*)`, `COUNT(col)`, `SUM(expr)`, `AVG(expr)`, `MIN(expr)`, `MAX(expr)`.
+
+### Subqueries
+
+Use a subquery in the `FROM` clause to compute derived values in a single query:
+
+```bash
+mdql query examples/ \
+  "SELECT token, sell_size, buy_size FROM (SELECT token, SUM(CASE WHEN side = 'SELL' THEN size ELSE 0 END) as sell_size, SUM(CASE WHEN side = 'BUY' THEN size ELSE 0 END) as buy_size FROM orders GROUP BY token) WHERE sell_size > buy_size"
+```
+
+Subqueries support the full SELECT syntax including WHERE, GROUP BY, HAVING, and ORDER BY.
 
 ### Date arithmetic
 

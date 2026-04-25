@@ -1508,4 +1508,71 @@ mod tests {
             panic!("Expected Select");
         }
     }
+
+    // ── Issue #42: Aggregate subtraction without GROUP BY ──
+
+    #[test]
+    fn test_aggregate_subtraction_no_group() {
+        // SUM(count) = 10 + 5 + 20 = 35, COUNT(*) = 3, diff = 35 - 3 = 32
+        let stmt = crate::query_parser::parse_query(
+            "SELECT SUM(count) - COUNT(*) as diff FROM test"
+        ).unwrap();
+        if let crate::query_parser::Statement::Select(q) = stmt {
+            let (rows, cols) = execute_inner(&q, &make_rows(), None).unwrap();
+            assert_eq!(cols, vec!["diff"]);
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0]["diff"], Value::Float(32.0));
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    // ── Issue #42: Aggregate division with GROUP BY ──
+
+    #[test]
+    fn test_aggregate_division_with_group_by() {
+        let rows = vec![
+            {
+                let mut r = Row::new();
+                r.insert("category".into(), Value::String("A".into()));
+                r.insert("count".into(), Value::Int(10));
+                r
+            },
+            {
+                let mut r = Row::new();
+                r.insert("category".into(), Value::String("A".into()));
+                r.insert("count".into(), Value::Int(20));
+                r
+            },
+            {
+                let mut r = Row::new();
+                r.insert("category".into(), Value::String("B".into()));
+                r.insert("count".into(), Value::Int(6));
+                r
+            },
+        ];
+        // Group A: SUM(count)=30, COUNT(*)=2, ratio=15.0
+        // Group B: SUM(count)=6, COUNT(*)=1, ratio=6.0
+        let stmt = crate::query_parser::parse_query(
+            "SELECT category, SUM(count) / COUNT(*) as ratio FROM test GROUP BY category"
+        ).unwrap();
+        if let crate::query_parser::Statement::Select(q) = stmt {
+            let (result, cols) = execute_inner(&q, &rows, None).unwrap();
+            assert!(cols.contains(&"ratio".to_string()));
+            assert_eq!(result.len(), 2);
+            // Find group A and B by category value
+            let group_a = result.iter().find(|r| r["category"] == Value::String("A".into())).unwrap();
+            let group_b = result.iter().find(|r| r["category"] == Value::String("B".into())).unwrap();
+            match &group_a["ratio"] {
+                Value::Float(f) => assert!((f - 15.0).abs() < 0.001),
+                other => panic!("Expected Float for group A ratio, got {:?}", other),
+            }
+            match &group_b["ratio"] {
+                Value::Float(f) => assert!((f - 6.0).abs() < 0.001),
+                other => panic!("Expected Float for group B ratio, got {:?}", other),
+            }
+        } else {
+            panic!("Expected Select");
+        }
+    }
 }

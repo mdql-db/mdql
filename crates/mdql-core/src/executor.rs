@@ -357,4 +357,36 @@ mod tests {
         );
         assert!(result.is_ok());
     }
+
+    // ── Issue #44: HAVING in CREATE VIEW ──
+
+    #[test]
+    fn test_create_view_with_having() {
+        let dir = make_test_db();
+        // Create a view with HAVING — both statuses have cnt=1, so HAVING cnt > 0 keeps both
+        let (result, _) = execute(
+            dir.path(),
+            "CREATE VIEW popular AS SELECT status, COUNT(*) as cnt FROM strategies GROUP BY status HAVING cnt > 0",
+        )
+        .unwrap();
+        assert!(matches!(result, QueryResult::Message(ref m) if m.contains("created")));
+
+        // Query the view to confirm it works
+        let (result, _) = execute(dir.path(), "SELECT * FROM popular").unwrap();
+        if let QueryResult::Rows { rows, columns } = result {
+            assert!(columns.contains(&"status".to_string()));
+            assert!(columns.contains(&"cnt".to_string()));
+            // Both LIVE and DRAFT have count 1, both > 0
+            assert_eq!(rows.len(), 2);
+        } else {
+            panic!("Expected Rows, got {:?}", result);
+        }
+    }
+
+    #[test]
+    fn test_extract_view_query_tab_after_as() {
+        let q = extract_view_query("CREATE VIEW v AS\tSELECT * FROM t").unwrap();
+        assert!(q.starts_with("SELECT"));
+        assert!(q.contains("FROM t"));
+    }
 }

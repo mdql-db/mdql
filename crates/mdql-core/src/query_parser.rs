@@ -1766,4 +1766,103 @@ mod tests {
             panic!("Expected CreateView, got {:?}", stmt);
         }
     }
+
+    // ── Issue #42: Aggregate multiplication ──
+
+    #[test]
+    fn test_aggregate_multiplication() {
+        let stmt = parse_query(
+            "SELECT SUM(a) * 2 as doubled FROM test"
+        ).unwrap();
+        if let Statement::Select(q) = stmt {
+            if let ColumnList::Named(exprs) = &q.columns {
+                assert_eq!(exprs.len(), 1);
+                assert!(exprs[0].is_aggregate());
+                assert_eq!(exprs[0].output_name(), "doubled");
+            } else {
+                panic!("Expected Named columns");
+            }
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_complex_aggregate_arithmetic() {
+        let stmt = parse_query(
+            "SELECT SUM(CASE WHEN side = 'SELL' THEN size ELSE 0 END) / SUM(CASE WHEN side = 'BUY' THEN size ELSE 0 END) as ratio FROM orders GROUP BY token"
+        ).unwrap();
+        if let Statement::Select(q) = stmt {
+            if let ColumnList::Named(exprs) = &q.columns {
+                assert_eq!(exprs.len(), 1);
+                assert!(exprs[0].is_aggregate());
+                assert_eq!(exprs[0].output_name(), "ratio");
+            } else {
+                panic!("Expected Named columns");
+            }
+            assert_eq!(q.group_by, Some(vec!["token".into()]));
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    // ── Issue #43: Subquery with alias and WHERE ──
+
+    #[test]
+    fn test_subquery_with_alias() {
+        let stmt = parse_query(
+            "SELECT x FROM (SELECT x FROM t) sub"
+        ).unwrap();
+        if let Statement::Select(q) = stmt {
+            assert!(q.subquery.is_some());
+            let sub = q.subquery.unwrap();
+            assert_eq!(sub.table, "t");
+            if let ColumnList::Named(exprs) = &q.columns {
+                assert_eq!(exprs.len(), 1);
+                assert_eq!(exprs[0].output_name(), "x");
+            } else {
+                panic!("Expected Named columns");
+            }
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_subquery_with_where() {
+        let stmt = parse_query(
+            "SELECT x FROM (SELECT x FROM t WHERE y > 0) LIMIT 5"
+        ).unwrap();
+        if let Statement::Select(q) = stmt {
+            assert!(q.subquery.is_some());
+            assert_eq!(q.limit, Some(5));
+            let sub = q.subquery.unwrap();
+            assert_eq!(sub.table, "t");
+            assert!(sub.where_clause.is_some());
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    // ── Issue #42 + CREATE VIEW: aggregate subtraction in view ──
+
+    #[test]
+    fn test_create_view_aggregate_subtraction() {
+        let stmt = parse_query(
+            "CREATE VIEW v AS SELECT token, SUM(sell) - SUM(buy) as net FROM orders GROUP BY token"
+        ).unwrap();
+        if let Statement::CreateView(cv) = stmt {
+            assert_eq!(cv.view_name, "v");
+            assert_eq!(cv.query.group_by, Some(vec!["token".into()]));
+            if let ColumnList::Named(exprs) = &cv.query.columns {
+                assert_eq!(exprs.len(), 2);
+                assert_eq!(exprs[1].output_name(), "net");
+                assert!(exprs[1].is_aggregate());
+            } else {
+                panic!("Expected Named columns");
+            }
+        } else {
+            panic!("Expected CreateView, got {:?}", stmt);
+        }
+    }
 }

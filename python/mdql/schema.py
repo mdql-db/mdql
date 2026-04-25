@@ -107,6 +107,10 @@ def load_schema(folder: str | Path) -> Schema:
     try:
         data = _rust_load_schema(str(folder))
         return Schema._from_dict(data)
+    except FileNotFoundError as e:
+        raise SchemaNotFoundError(str(e)) from None
+    except ValueError as e:
+        raise SchemaInvalidError(str(e)) from None
     except RuntimeError as e:
         msg = str(e)
         if "not found" in msg.lower() or "no _mdql.md" in msg.lower():
