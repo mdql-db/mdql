@@ -148,7 +148,11 @@ impl Parser {
     fn parse_statement(&mut self) -> Result<Statement, MdqlError> {
         let t = self.peek().ok_or_else(|| MdqlError::QueryParse("Empty query".into()))?;
         match (t.token_type.as_str(), t.value.as_str()) {
-            ("keyword", "SELECT") => Ok(Statement::Select(self.parse_select()?)),
+            ("keyword", "SELECT") => {
+                let q = self.parse_select()?;
+                self.expect_end()?;
+                Ok(Statement::Select(q))
+            }
             ("keyword", "INSERT") => Ok(Statement::Insert(self.parse_insert()?)),
             ("keyword", "UPDATE") => Ok(Statement::Update(self.parse_update()?)),
             ("keyword", "DELETE") => Ok(Statement::Delete(self.parse_delete()?)),
@@ -166,13 +170,35 @@ impl Parser {
         self.expect("keyword", Some("SELECT"))?;
         let columns = self.parse_columns()?;
         self.expect("keyword", Some("FROM"))?;
-        let table = self.parse_ident()?;
 
-        // Optional table alias
-        let mut table_alias = None;
-        if let Some(t) = self.peek() {
-            if t.token_type == "ident" && !self.is_clause_keyword(t) {
-                table_alias = Some(self.advance().value);
+        // Subquery: FROM (SELECT ...)
+        let mut subquery = None;
+        let (table, mut table_alias) = if self.peek().map_or(false, |t| t.token_type == "op" && t.value == "(") {
+            self.advance();
+            let inner = self.parse_select()?;
+            self.expect("op", Some(")"))?;
+            subquery = Some(Box::new(inner));
+            let alias = if let Some(t) = self.peek() {
+                if t.token_type == "ident" && !self.is_clause_keyword(t) {
+                    Some(self.advance().value)
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            ("_subquery".to_string(), alias)
+        } else {
+            let t = self.parse_ident()?;
+            (t, None)
+        };
+
+        // Optional table alias (for non-subquery)
+        if subquery.is_none() {
+            if let Some(t) = self.peek() {
+                if t.token_type == "ident" && !self.is_clause_keyword(t) {
+                    table_alias = Some(self.advance().value);
+                }
             }
         }
 
@@ -233,12 +259,11 @@ impl Parser {
             })?);
         }
 
-        self.expect_end()?;
-
         Ok(SelectQuery {
             columns,
             table,
             table_alias,
+            subquery,
             joins,
             where_clause,
             group_by,
@@ -413,6 +438,7 @@ impl Parser {
 
         self.expect("keyword", Some("AS"))?;
         let query = Box::new(self.parse_select()?);
+        self.expect_end()?;
 
         Ok(Statement::CreateView(CreateViewQuery {
             view_name,
@@ -485,67 +511,35 @@ impl Parser {
             MdqlError::QueryParse("Expected column or aggregate, got end of query".into())
         })?;
 
-        if self.peek_is_agg_func() {
-            let func_name = self.advance().value.to_uppercase();
-            let func = match func_name.as_str() {
-                "COUNT" => AggFunc::Count,
-                "SUM" => AggFunc::Sum,
-                "AVG" => AggFunc::Avg,
-                "MIN" => AggFunc::Min,
-                "MAX" => AggFunc::Max,
-                _ => unreachable!(),
-            };
-            self.expect("op", Some("("))?;
-            let (arg, arg_expr) = if self.peek().map_or(false, |t| t.token_type == "op" && t.value == "*") {
-                self.advance();
-                ("*".to_string(), None)
-            } else {
-                // Parse a full expression inside the aggregate (supports CASE WHEN, arithmetic, etc.)
-                let expr = self.parse_additive()?;
-                if let Expr::Column(name) = &expr {
-                    (name.clone(), None)
-                } else {
-                    (expr.display_name(), Some(expr))
-                }
-            };
-            self.expect("op", Some(")"))?;
+        let expr = self.parse_additive()?;
 
-            let alias = if self.match_keyword("AS") {
-                Some(self.parse_ident()?)
-            } else if self.peek().map_or(false, |t| {
-                t.token_type == "ident" && !self.is_clause_keyword(t)
-            }) {
-                Some(self.advance().value)
-            } else {
-                None
-            };
-
-            Ok(SelectExpr::Aggregate { func, arg, arg_expr, alias })
+        let alias = if self.match_keyword("AS") {
+            Some(self.parse_ident()?)
+        } else if self.peek().map_or(false, |t| {
+            t.token_type == "ident" && !self.is_clause_keyword(t)
+        }) {
+            Some(self.advance().value)
         } else {
-            // Parse a general expression (could be a column, literal, or arithmetic)
-            let expr = self.parse_additive()?;
+            None
+        };
 
-            // Optional alias: explicit (AS alias) or implicit (just an ident)
-            let alias = if self.match_keyword("AS") {
-                Some(self.parse_ident()?)
-            } else if self.peek().map_or(false, |t| {
-                t.token_type == "ident" && !self.is_clause_keyword(t)
-            }) {
-                Some(self.advance().value)
-            } else {
-                None
-            };
-
-            // If it's a simple column reference with no alias, return Column variant
-            // for backward compatibility
-            if alias.is_none() {
-                if let Expr::Column(name) = &expr {
-                    return Ok(SelectExpr::Column(name.clone()));
-                }
-            }
-
-            Ok(SelectExpr::Expr { expr, alias })
+        // Bare aggregate → SelectExpr::Aggregate for backward compat
+        if let Expr::Aggregate { func, arg, arg_expr } = expr {
+            return Ok(SelectExpr::Aggregate {
+                func,
+                arg,
+                arg_expr: arg_expr.map(|e| *e),
+                alias,
+            });
         }
+
+        if alias.is_none() {
+            if let Expr::Column(name) = &expr {
+                return Ok(SelectExpr::Column(name.clone()));
+            }
+        }
+
+        Ok(SelectExpr::Expr { expr, alias })
     }
 
     // ── Expression parser (precedence climbing) ───────────────────────
@@ -639,6 +633,10 @@ impl Parser {
     }
 
     fn parse_atom(&mut self) -> Result<Expr, MdqlError> {
+        if self.peek_is_agg_func() {
+            return self.parse_agg_expr();
+        }
+
         let t = self.peek().ok_or_else(|| {
             MdqlError::QueryParse("Expected expression, got end of query".into())
         })?;
@@ -726,6 +724,32 @@ impl Parser {
         };
         self.expect("keyword", Some("END"))?;
         Ok(Expr::Case { whens, else_expr })
+    }
+
+    fn parse_agg_expr(&mut self) -> Result<Expr, MdqlError> {
+        let func_name = self.advance().value.to_uppercase();
+        let func = match func_name.as_str() {
+            "COUNT" => AggFunc::Count,
+            "SUM" => AggFunc::Sum,
+            "AVG" => AggFunc::Avg,
+            "MIN" => AggFunc::Min,
+            "MAX" => AggFunc::Max,
+            _ => unreachable!(),
+        };
+        self.expect("op", Some("("))?;
+        let (arg, arg_expr) = if self.peek().map_or(false, |t| t.token_type == "op" && t.value == "*") {
+            self.advance();
+            ("*".to_string(), None)
+        } else {
+            let expr = self.parse_additive()?;
+            if let Expr::Column(name) = &expr {
+                (name.clone(), None)
+            } else {
+                (expr.display_name(), Some(Box::new(expr)))
+            }
+        };
+        self.expect("op", Some(")"))?;
+        Ok(Expr::Aggregate { func, arg, arg_expr })
     }
 
     fn parse_ident(&mut self) -> Result<String, MdqlError> {
@@ -1661,6 +1685,85 @@ mod tests {
             assert_eq!(cv.view_name, "My_View");
         } else {
             panic!("Expected CreateView");
+        }
+    }
+
+    // ── Issue #42: Arithmetic between aggregates in column expressions ──
+
+    #[test]
+    fn test_aggregate_division() {
+        let stmt = parse_query(
+            "SELECT token, SUM(sell) / SUM(buy) as ratio FROM orders GROUP BY token"
+        ).unwrap();
+        if let Statement::Select(q) = stmt {
+            assert_eq!(q.group_by, Some(vec!["token".into()]));
+            if let ColumnList::Named(exprs) = &q.columns {
+                assert_eq!(exprs.len(), 2);
+                assert!(exprs[1].is_aggregate());
+            } else {
+                panic!("Expected Named columns");
+            }
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_aggregate_subtraction() {
+        let stmt = parse_query(
+            "SELECT token, SUM(sell) - SUM(buy) as net FROM orders GROUP BY token"
+        ).unwrap();
+        if let Statement::Select(q) = stmt {
+            if let ColumnList::Named(exprs) = &q.columns {
+                assert_eq!(exprs[1].output_name(), "net");
+            }
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_create_view_with_arithmetic() {
+        let stmt = parse_query(
+            "CREATE VIEW positions AS SELECT token, SUM(sell) / SUM(buy) as ratio FROM orders GROUP BY token"
+        ).unwrap();
+        if let Statement::CreateView(cv) = stmt {
+            assert_eq!(cv.view_name, "positions");
+        } else {
+            panic!("Expected CreateView, got {:?}", stmt);
+        }
+    }
+
+    // ── Issue #43: Subqueries in FROM ──
+
+    #[test]
+    fn test_subquery_in_from() {
+        let stmt = parse_query(
+            "SELECT token, sell_size FROM (SELECT token, SUM(size) as sell_size FROM orders GROUP BY token) LIMIT 5"
+        ).unwrap();
+        if let Statement::Select(q) = stmt {
+            assert!(q.subquery.is_some());
+            assert_eq!(q.limit, Some(5));
+            let sub = q.subquery.unwrap();
+            assert_eq!(sub.table, "orders");
+            assert!(sub.group_by.is_some());
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    // ── Issue #44: HAVING in CREATE VIEW ──
+
+    #[test]
+    fn test_create_view_with_having() {
+        let stmt = parse_query(
+            "CREATE VIEW positions AS SELECT token, SUM(sell) as sell_size, SUM(buy) as buy_size FROM orders GROUP BY token HAVING sell_size > buy_size"
+        ).unwrap();
+        if let Statement::CreateView(cv) = stmt {
+            assert_eq!(cv.view_name, "positions");
+            assert!(cv.query.having.is_some());
+        } else {
+            panic!("Expected CreateView, got {:?}", stmt);
         }
     }
 }

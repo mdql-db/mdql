@@ -22,6 +22,7 @@ pub enum Expr {
     DateDiff { left: Box<Expr>, right: Box<Expr> },
     CurrentDate,
     CurrentTimestamp,
+    Aggregate { func: AggFunc, arg: String, arg_expr: Option<Box<Expr>> },
 }
 
 impl Expr {
@@ -53,6 +54,31 @@ impl Expr {
             Expr::DateDiff { left, right } => format!("DATEDIFF({}, {})", left.display_name(), right.display_name()),
             Expr::CurrentDate => "CURRENT_DATE".to_string(),
             Expr::CurrentTimestamp => "CURRENT_TIMESTAMP".to_string(),
+            Expr::Aggregate { func, arg, .. } => {
+                let func_name = match func {
+                    AggFunc::Count => "COUNT",
+                    AggFunc::Sum => "SUM",
+                    AggFunc::Avg => "AVG",
+                    AggFunc::Min => "MIN",
+                    AggFunc::Max => "MAX",
+                };
+                format!("{}({})", func_name, arg)
+            }
+        }
+    }
+
+    pub fn contains_aggregate(&self) -> bool {
+        match self {
+            Expr::Aggregate { .. } => true,
+            Expr::BinaryOp { left, right, .. } => {
+                left.contains_aggregate() || right.contains_aggregate()
+            }
+            Expr::UnaryMinus(inner) => inner.contains_aggregate(),
+            Expr::Case { whens, else_expr } => {
+                whens.iter().any(|(_, e)| e.contains_aggregate())
+                    || else_expr.as_ref().map_or(false, |e| e.contains_aggregate())
+            }
+            _ => false,
         }
     }
 }
@@ -144,7 +170,11 @@ impl SelectExpr {
     }
 
     pub fn is_aggregate(&self) -> bool {
-        matches!(self, SelectExpr::Aggregate { .. })
+        match self {
+            SelectExpr::Aggregate { .. } => true,
+            SelectExpr::Expr { expr, .. } => expr.contains_aggregate(),
+            _ => false,
+        }
     }
 }
 
@@ -153,6 +183,7 @@ pub struct SelectQuery {
     pub columns: ColumnList,
     pub table: String,
     pub table_alias: Option<String>,
+    pub subquery: Option<Box<SelectQuery>>,
     pub joins: Vec<JoinClause>,
     pub where_clause: Option<WhereClause>,
     pub group_by: Option<Vec<String>>,

@@ -15,6 +15,10 @@ pub fn execute_query(
     rows: &[Row],
     _schema: &Schema,
 ) -> crate::errors::Result<(Vec<Row>, Vec<String>)> {
+    if let Some(ref sub) = query.subquery {
+        let (sub_rows, _sub_cols) = execute_inner(sub, rows, None)?;
+        return execute_inner(query, &sub_rows, None);
+    }
     execute_inner(query, rows, None)
 }
 
@@ -264,7 +268,10 @@ fn aggregate_rows(
                 }
                 SelectExpr::Expr { expr: e, alias } => {
                     let out_name = alias.clone().unwrap_or_else(|| e.display_name());
-                    if let Some(first) = group_rows.first() {
+                    if e.contains_aggregate() {
+                        let val = evaluate_agg_expr(e, group_rows);
+                        out.insert(out_name, val);
+                    } else if let Some(first) = group_rows.first() {
                         let val = evaluate_expr(e, first);
                         out.insert(out_name, val);
                     }
@@ -557,6 +564,79 @@ pub fn evaluate_expr(expr: &Expr, row: &Row) -> Value {
                 _ => return Value::Null,
             };
             Value::Int((left_date - right_date).num_days())
+        }
+        Expr::Aggregate { func, arg, .. } => {
+            // Post-aggregation: look up the pre-computed column name
+            let func_name = match func {
+                AggFunc::Count => "COUNT",
+                AggFunc::Sum => "SUM",
+                AggFunc::Avg => "AVG",
+                AggFunc::Min => "MIN",
+                AggFunc::Max => "MAX",
+            };
+            let col = format!("{}({})", func_name, arg);
+            row.get(&col).cloned().unwrap_or(Value::Null)
+        }
+    }
+}
+
+fn evaluate_agg_expr(expr: &Expr, group_rows: &[&Row]) -> Value {
+    match expr {
+        Expr::Aggregate { func, arg, arg_expr } => {
+            compute_aggregate(func, arg, arg_expr.as_deref(), group_rows)
+        }
+        Expr::BinaryOp { left, op, right } => {
+            let lv = evaluate_agg_expr(left, group_rows);
+            let rv = evaluate_agg_expr(right, group_rows);
+            apply_arith_op(op, &lv, &rv)
+        }
+        Expr::UnaryMinus(inner) => {
+            match evaluate_agg_expr(inner, group_rows) {
+                Value::Int(n) => Value::Int(-n),
+                Value::Float(f) => Value::Float(-f),
+                _ => Value::Null,
+            }
+        }
+        other => {
+            if let Some(first) = group_rows.first() {
+                evaluate_expr(other, first)
+            } else {
+                Value::Null
+            }
+        }
+    }
+}
+
+fn apply_arith_op(op: &ArithOp, lv: &Value, rv: &Value) -> Value {
+    if lv.is_null() || rv.is_null() {
+        return Value::Null;
+    }
+    match (lv, rv) {
+        (Value::Int(a), Value::Int(b)) => match op {
+            ArithOp::Add => Value::Int(a.wrapping_add(*b)),
+            ArithOp::Sub => Value::Int(a.wrapping_sub(*b)),
+            ArithOp::Mul => Value::Int(a.wrapping_mul(*b)),
+            ArithOp::Div => if *b == 0 { Value::Null } else { Value::Int(a / b) },
+            ArithOp::Mod => if *b == 0 { Value::Null } else { Value::Int(a % b) },
+        },
+        _ => {
+            let a = match lv {
+                Value::Int(n) => *n as f64,
+                Value::Float(f) => *f,
+                _ => return Value::Null,
+            };
+            let b = match rv {
+                Value::Int(n) => *n as f64,
+                Value::Float(f) => *f,
+                _ => return Value::Null,
+            };
+            match op {
+                ArithOp::Add => Value::Float(a + b),
+                ArithOp::Sub => Value::Float(a - b),
+                ArithOp::Mul => Value::Float(a * b),
+                ArithOp::Div => if b == 0.0 { Value::Null } else { Value::Float(a / b) },
+                ArithOp::Mod => if b == 0.0 { Value::Null } else { Value::Float(a % b) },
+            }
         }
     }
 }
@@ -942,6 +1022,7 @@ mod tests {
             columns: ColumnList::All,
             table: "test".into(),
             table_alias: None,
+            subquery: None,
             joins: vec![],
             where_clause: None,
             group_by: None,
@@ -959,6 +1040,7 @@ mod tests {
             columns: ColumnList::All,
             table: "test".into(),
             table_alias: None,
+            subquery: None,
             joins: vec![],
             where_clause: Some(WhereClause::Comparison(Comparison {
                 column: "count".into(),
@@ -982,6 +1064,7 @@ mod tests {
             columns: ColumnList::All,
             table: "test".into(),
             table_alias: None,
+            subquery: None,
             joins: vec![],
             where_clause: None,
             group_by: None,
@@ -1004,6 +1087,7 @@ mod tests {
             columns: ColumnList::All,
             table: "test".into(),
             table_alias: None,
+            subquery: None,
             joins: vec![],
             where_clause: None,
             group_by: None,
@@ -1021,6 +1105,7 @@ mod tests {
             columns: ColumnList::All,
             table: "test".into(),
             table_alias: None,
+            subquery: None,
             joins: vec![],
             where_clause: Some(WhereClause::Comparison(Comparison {
                 column: "title".into(),
@@ -1048,6 +1133,7 @@ mod tests {
             columns: ColumnList::All,
             table: "test".into(),
             table_alias: None,
+            subquery: None,
             joins: vec![],
             where_clause: Some(WhereClause::Comparison(Comparison {
                 column: "optional".into(),
@@ -1352,6 +1438,7 @@ mod tests {
             ]),
             table: "orders".into(),
             table_alias: None,
+            subquery: None,
             joins: vec![],
             where_clause: None,
             group_by: Some(vec!["o.token".into(), "o.event_date".into()]),
@@ -1369,5 +1456,56 @@ mod tests {
             rows[0]["exit_date"],
             Value::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 22).unwrap())
         );
+    }
+
+    #[test]
+    fn test_aggregate_arithmetic() {
+        // SUM(count) for all rows = 10 + 5 + 20 = 35
+        // COUNT(*) = 3
+        // SUM produces Float, COUNT produces Int → mixed → Float division
+        let stmt = crate::query_parser::parse_query(
+            "SELECT SUM(count) / COUNT(*) AS avg_count FROM test"
+        ).unwrap();
+        if let crate::query_parser::Statement::Select(q) = stmt {
+            let (rows, cols) = execute_inner(&q, &make_rows(), None).unwrap();
+            assert_eq!(cols, vec!["avg_count"]);
+            assert_eq!(rows.len(), 1);
+            match &rows[0]["avg_count"] {
+                Value::Float(f) => assert!((f - 11.666666666666666).abs() < 0.001),
+                other => panic!("Expected Float, got {:?}", other),
+            }
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_aggregate_subtraction_with_group_by() {
+        let rows = vec![
+            {
+                let mut r = Row::new();
+                r.insert("token".into(), Value::String("BTC".into()));
+                r.insert("side".into(), Value::String("BUY".into()));
+                r.insert("size".into(), Value::Float(100.0));
+                r
+            },
+            {
+                let mut r = Row::new();
+                r.insert("token".into(), Value::String("BTC".into()));
+                r.insert("side".into(), Value::String("SELL".into()));
+                r.insert("size".into(), Value::Float(60.0));
+                r
+            },
+        ];
+        let stmt = crate::query_parser::parse_query(
+            "SELECT token, SUM(CASE WHEN side = 'BUY' THEN size ELSE 0 END) - SUM(CASE WHEN side = 'SELL' THEN size ELSE 0 END) AS net FROM test GROUP BY token"
+        ).unwrap();
+        if let crate::query_parser::Statement::Select(q) = stmt {
+            let (result, _) = execute_inner(&q, &rows, None).unwrap();
+            assert_eq!(result.len(), 1);
+            assert_eq!(result[0]["net"], Value::Float(40.0));
+        } else {
+            panic!("Expected Select");
+        }
     }
 }

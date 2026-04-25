@@ -206,7 +206,17 @@ pub fn materialize_view(
         }
     };
 
-    let (rows, columns) = if !select.joins.is_empty() {
+    let (rows, columns) = if let Some(ref sub) = select.subquery {
+        let (sub_schema, sub_table_rows) = tables.get(&sub.table).ok_or_else(|| {
+            crate::errors::MdqlError::QueryExecution(format!(
+                "table '{}' not found in database",
+                sub.table
+            ))
+        })?;
+        let (sub_rows, _) = crate::query_engine::execute_query(sub, sub_table_rows, sub_schema)?;
+        let dummy_schema = sub_schema.clone();
+        crate::query_engine::execute_query(&select, &sub_rows, &dummy_schema)?
+    } else if !select.joins.is_empty() {
         crate::query_engine::execute_join_query(&select, tables)?
     } else {
         let (schema, table_rows) = tables.get(&select.table).ok_or_else(|| {

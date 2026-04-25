@@ -21,9 +21,19 @@ pub fn execute(path: &Path, sql: &str) -> crate::errors::Result<(QueryResult, Ve
 
     match stmt {
         Statement::Select(ref q) => {
-            if !q.joins.is_empty() || is_db {
+            if q.subquery.is_some() || !q.joins.is_empty() || is_db {
                 let (_config, tables, errors) = crate::loader::load_database(path)?;
-                let (rows, cols) = if !q.joins.is_empty() {
+                let (rows, cols) = if let Some(ref sub) = q.subquery {
+                    let source_table = &sub.table;
+                    let (schema, table_rows) = tables.get(source_table).ok_or_else(|| {
+                        MdqlError::QueryExecution(format!(
+                            "table '{}' not found in database",
+                            source_table
+                        ))
+                    })?;
+                    let (sub_rows, _) = execute_query(sub, table_rows, schema)?;
+                    execute_query(q, &sub_rows, schema)?
+                } else if !q.joins.is_empty() {
                     execute_join_query(q, &tables)?
                 } else {
                     let (schema, rows) = tables.get(&q.table).ok_or_else(|| {
@@ -64,13 +74,7 @@ pub fn execute(path: &Path, sql: &str) -> crate::errors::Result<(QueryResult, Ve
                 )));
             }
 
-            let query_str = sql
-                .to_uppercase()
-                .find(" AS ")
-                .map(|pos| sql[pos + 4..].trim().to_string())
-                .ok_or_else(|| {
-                    MdqlError::QueryExecution("CREATE VIEW must contain AS clause".into())
-                })?;
+            let query_str = extract_view_query(sql)?;
 
             let view_def = ViewDef {
                 name: cv.view_name.clone(),
@@ -145,6 +149,40 @@ pub fn execute(path: &Path, sql: &str) -> crate::errors::Result<(QueryResult, Ve
             Ok((QueryResult::Message(msg), vec![]))
         }
     }
+}
+
+fn extract_view_query(sql: &str) -> crate::errors::Result<String> {
+    let upper = sql.to_uppercase();
+    let as_keyword = upper.find(" AS ");
+    if let Some(pos) = as_keyword {
+        let after = &sql[pos + 4..];
+        let trimmed = after.trim_start();
+        let trimmed_upper = trimmed.to_uppercase();
+        if trimmed_upper.starts_with("SELECT") {
+            return Ok(trimmed.to_string());
+        }
+    }
+    // Fallback: scan for any whitespace-surrounded AS that precedes SELECT
+    let bytes = upper.as_bytes();
+    let mut i = 0;
+    while i + 4 < bytes.len() {
+        if bytes[i].is_ascii_whitespace()
+            && bytes[i + 1] == b'A'
+            && bytes[i + 2] == b'S'
+            && bytes[i + 3].is_ascii_whitespace()
+        {
+            let after = &sql[i + 3..];
+            let trimmed = after.trim_start();
+            let trimmed_upper = trimmed.to_uppercase();
+            if trimmed_upper.starts_with("SELECT") {
+                return Ok(trimmed.to_string());
+            }
+        }
+        i += 1;
+    }
+    Err(crate::errors::MdqlError::QueryExecution(
+        "CREATE VIEW must contain AS clause followed by SELECT".into(),
+    ))
 }
 
 #[cfg(test)]
@@ -287,5 +325,36 @@ mod tests {
         );
         assert!(err.is_err());
         assert!(err.unwrap_err().to_string().contains("database directory"));
+    }
+
+    #[test]
+    fn test_extract_view_query_basic() {
+        let q = extract_view_query("CREATE VIEW v AS SELECT * FROM t").unwrap();
+        assert!(q.starts_with("SELECT"));
+    }
+
+    #[test]
+    fn test_extract_view_query_with_column_alias() {
+        let q = extract_view_query(
+            "CREATE VIEW v AS SELECT token, SUM(size) as sell_size FROM orders GROUP BY token HAVING sell_size > 0"
+        ).unwrap();
+        assert!(q.starts_with("SELECT"));
+        assert!(q.contains("HAVING"));
+    }
+
+    #[test]
+    fn test_extract_view_query_newline_after_as() {
+        let q = extract_view_query("CREATE VIEW v AS\nSELECT * FROM t").unwrap();
+        assert!(q.starts_with("SELECT"));
+    }
+
+    #[test]
+    fn test_create_view_with_aggregate_arithmetic() {
+        let dir = make_test_db();
+        let result = execute(
+            dir.path(),
+            "CREATE VIEW v AS SELECT status, COUNT(*) - COUNT(*) as zero FROM strategies GROUP BY status",
+        );
+        assert!(result.is_ok());
     }
 }
