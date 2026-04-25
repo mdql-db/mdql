@@ -737,9 +737,7 @@ impl PyDatabase {
             let (schema, table_rows) = tables
                 .get(&sub.table)
                 .ok_or_else(|| PyValueError::new_err(format!("Table '{}' not found", sub.table)))?;
-            let (sub_rows, _) = mdql_core::query_engine::execute_query(sub, table_rows, schema)
-                .map_err(mdql_to_py_err)?;
-            mdql_core::query_engine::execute_query(&select, &sub_rows, schema)
+            mdql_core::query_engine::execute_query(&select, table_rows, schema)
         } else if !select.joins.is_empty() {
             mdql_core::query_engine::execute_join_query(&select, &tables)
         } else {

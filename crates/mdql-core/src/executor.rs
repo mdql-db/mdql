@@ -31,8 +31,7 @@ pub fn execute(path: &Path, sql: &str) -> crate::errors::Result<(QueryResult, Ve
                             source_table
                         ))
                     })?;
-                    let (sub_rows, _) = execute_query(sub, table_rows, schema)?;
-                    execute_query(q, &sub_rows, schema)?
+                    execute_query(q, table_rows, schema)?
                 } else if !q.joins.is_empty() {
                     execute_join_query(q, &tables)?
                 } else {

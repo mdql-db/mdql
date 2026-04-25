@@ -213,9 +213,7 @@ pub fn materialize_view(
                 sub.table
             ))
         })?;
-        let (sub_rows, _) = crate::query_engine::execute_query(sub, sub_table_rows, sub_schema)?;
-        let dummy_schema = sub_schema.clone();
-        crate::query_engine::execute_query(&select, &sub_rows, &dummy_schema)?
+        crate::query_engine::execute_query(&select, sub_table_rows, sub_schema)?
     } else if !select.joins.is_empty() {
         crate::query_engine::execute_join_query(&select, tables)?
     } else {
