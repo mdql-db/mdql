@@ -21,5 +21,4 @@ def load_database_config(db_dir):
     """Load database config — delegates to Rust internally via Database."""
     from mdql.api import Database
     db = Database(db_dir)
-    # Return a minimal config
     return DatabaseConfig(name=db.name)

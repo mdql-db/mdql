@@ -108,7 +108,6 @@ def multi_file_txn(folder: str | Path, operation: str):
     try:
         yield txn
     except Exception:
-        # Rollback
         for path_str, content in journal["backups"].items():
             atomic_write(path_str, content)
         for path_str in journal["created"]:

@@ -3,7 +3,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::database::DatabaseConfig;
-use crate::errors::ValidationError;
+use crate::errors::{ValidationError, ValidationErrorKind};
 use crate::model::{Row, Value};
 use crate::parser::ParsedFile;
 use crate::schema::Schema;
@@ -17,14 +17,14 @@ pub fn validate_file(parsed: &ParsedFile, schema: &Schema) -> Vec<ValidationErro
     for msg in &parsed.parse_errors {
         errors.push(ValidationError {
             file_path: fp.clone(),
-            error_type: "parse_error".to_string(),
+            error_type: ValidationErrorKind::ParseError,
             field: None,
             message: msg.clone(),
             line_number: None,
         });
     }
 
-    if errors.iter().any(|e| e.error_type == "parse_error") {
+    if errors.iter().any(|e| e.error_type == ValidationErrorKind::ParseError) {
         return errors;
     }
 
@@ -42,7 +42,7 @@ pub fn validate_file(parsed: &ParsedFile, schema: &Schema) -> Vec<ValidationErro
                 if field_def.required {
                     errors.push(ValidationError {
                         file_path: fp.clone(),
-                        error_type: "missing_field".to_string(),
+                        error_type: ValidationErrorKind::MissingField,
                         field: Some(name.clone()),
                         message: format!("Missing required frontmatter field '{}'", name),
                         line_number: None,
@@ -53,7 +53,7 @@ pub fn validate_file(parsed: &ParsedFile, schema: &Schema) -> Vec<ValidationErro
                 if let Some(type_err) = check_type(value, &field_def.field_type, name) {
                     errors.push(ValidationError {
                         file_path: fp.clone(),
-                        error_type: "type_mismatch".to_string(),
+                        error_type: ValidationErrorKind::TypeMismatch,
                         field: Some(name.clone()),
                         message: type_err,
                         line_number: None,
@@ -66,7 +66,7 @@ pub fn validate_file(parsed: &ParsedFile, schema: &Schema) -> Vec<ValidationErro
                         if !enum_vals.contains(&str_val) {
                             errors.push(ValidationError {
                                 file_path: fp.clone(),
-                                error_type: "enum_violation".to_string(),
+                                error_type: ValidationErrorKind::EnumViolation,
                                 field: Some(name.clone()),
                                 message: format!(
                                     "Field '{}' value '{}' not in allowed values: {:?}",
@@ -92,7 +92,7 @@ pub fn validate_file(parsed: &ParsedFile, schema: &Schema) -> Vec<ValidationErro
             ) {
                 errors.push(ValidationError {
                     file_path: fp.clone(),
-                    error_type: "type_mismatch".to_string(),
+                    error_type: ValidationErrorKind::TypeMismatch,
                     field: Some(ts_field.to_string()),
                     message: type_err,
                     line_number: None,
@@ -110,7 +110,7 @@ pub fn validate_file(parsed: &ParsedFile, schema: &Schema) -> Vec<ValidationErro
                 {
                     errors.push(ValidationError {
                         file_path: fp.clone(),
-                        error_type: "unknown_field".to_string(),
+                        error_type: ValidationErrorKind::UnknownField,
                         field: Some(key.to_string()),
                         message: format!(
                             "Unknown frontmatter field '{}' (not in schema)",
@@ -127,7 +127,7 @@ pub fn validate_file(parsed: &ParsedFile, schema: &Schema) -> Vec<ValidationErro
     if schema.h1_required && parsed.h1.is_none() {
         errors.push(ValidationError {
             file_path: fp.clone(),
-            error_type: "missing_h1".to_string(),
+            error_type: ValidationErrorKind::MissingH1,
             field: None,
             message: "Missing required H1 heading".to_string(),
             line_number: None,
@@ -142,7 +142,7 @@ pub fn validate_file(parsed: &ParsedFile, schema: &Schema) -> Vec<ValidationErro
                 if h1 != &expected {
                     errors.push(ValidationError {
                         file_path: fp.clone(),
-                        error_type: "h1_mismatch".to_string(),
+                        error_type: ValidationErrorKind::H1Mismatch,
                         field: None,
                         message: format!(
                             "H1 '{}' does not match frontmatter '{}' (expected '{}')",
@@ -174,7 +174,7 @@ pub fn validate_file(parsed: &ParsedFile, schema: &Schema) -> Vec<ValidationErro
             if *count > 1 {
                 errors.push(ValidationError {
                     file_path: fp.clone(),
-                    error_type: "duplicate_section".to_string(),
+                    error_type: ValidationErrorKind::DuplicateSection,
                     field: Some(name.to_string()),
                     message: format!(
                         "Duplicate section '{}' (appears {} times)",
@@ -191,7 +191,7 @@ pub fn validate_file(parsed: &ParsedFile, schema: &Schema) -> Vec<ValidationErro
         if section_def.required && !section_names.contains(&name.as_str()) {
             errors.push(ValidationError {
                 file_path: fp.clone(),
-                error_type: "missing_section".to_string(),
+                error_type: ValidationErrorKind::MissingSection,
                 field: Some(name.clone()),
                 message: format!("Missing required section '{}'", name),
                 line_number: None,
@@ -205,7 +205,7 @@ pub fn validate_file(parsed: &ParsedFile, schema: &Schema) -> Vec<ValidationErro
             if !schema.sections.contains_key(&section.normalized_heading) {
                 errors.push(ValidationError {
                     file_path: fp.clone(),
-                    error_type: "unknown_section".to_string(),
+                    error_type: ValidationErrorKind::UnknownSection,
                     field: Some(section.normalized_heading.clone()),
                     message: format!(
                         "Unknown section '{}' (not in schema)",
@@ -409,7 +409,7 @@ pub fn validate_foreign_keys(
             None => {
                 errors.push(ValidationError {
                     file_path: format!("_mdql.md"),
-                    error_type: "fk_missing_table".to_string(),
+                    error_type: ValidationErrorKind::FkMissingTable,
                     field: None,
                     message: format!(
                         "Foreign key references unknown table '{}'",
@@ -426,7 +426,7 @@ pub fn validate_foreign_keys(
             None => {
                 errors.push(ValidationError {
                     file_path: format!("_mdql.md"),
-                    error_type: "fk_missing_table".to_string(),
+                    error_type: ValidationErrorKind::FkMissingTable,
                     field: None,
                     message: format!(
                         "Foreign key references unknown table '{}'",
@@ -471,7 +471,7 @@ pub fn validate_foreign_keys(
                 if !valid_values.contains(value_str) {
                     errors.push(ValidationError {
                         file_path: file_path.clone(),
-                        error_type: "fk_violation".to_string(),
+                        error_type: ValidationErrorKind::FkViolation,
                         field: Some(fk.from_column.clone()),
                         message: format!(
                             "{} = '{}' not found in {}.{}",
@@ -547,7 +547,7 @@ mod tests {
         let text = "---\ntitle: \"Hello\"\n---\n\n## Summary\n\nText.\n";
         let parsed = parse_text(text, "test.md", false);
         let errors = validate_file(&parsed, &make_schema());
-        assert!(errors.iter().any(|e| e.error_type == "missing_field" && e.field.as_deref() == Some("count")));
+        assert!(errors.iter().any(|e| e.error_type == ValidationErrorKind::MissingField && e.field.as_deref() == Some("count")));
     }
 
     #[test]
@@ -555,7 +555,7 @@ mod tests {
         let text = "---\ntitle: \"Hello\"\ncount: \"not a number\"\n---\n\n## Summary\n\nText.\n";
         let parsed = parse_text(text, "test.md", false);
         let errors = validate_file(&parsed, &make_schema());
-        assert!(errors.iter().any(|e| e.error_type == "type_mismatch" && e.field.as_deref() == Some("count")));
+        assert!(errors.iter().any(|e| e.error_type == ValidationErrorKind::TypeMismatch && e.field.as_deref() == Some("count")));
     }
 
     #[test]
@@ -563,7 +563,7 @@ mod tests {
         let text = "---\ntitle: \"Hello\"\ncount: 5\nstatus: INVALID\n---\n\n## Summary\n\nText.\n";
         let parsed = parse_text(text, "test.md", false);
         let errors = validate_file(&parsed, &make_schema());
-        assert!(errors.iter().any(|e| e.error_type == "enum_violation"));
+        assert!(errors.iter().any(|e| e.error_type == ValidationErrorKind::EnumViolation));
     }
 
     #[test]
@@ -571,7 +571,7 @@ mod tests {
         let text = "---\ntitle: \"Hello\"\ncount: 5\nextra: bad\n---\n\n## Summary\n\nText.\n";
         let parsed = parse_text(text, "test.md", false);
         let errors = validate_file(&parsed, &make_schema());
-        assert!(errors.iter().any(|e| e.error_type == "unknown_field" && e.field.as_deref() == Some("extra")));
+        assert!(errors.iter().any(|e| e.error_type == ValidationErrorKind::UnknownField && e.field.as_deref() == Some("extra")));
     }
 
     #[test]
@@ -579,7 +579,7 @@ mod tests {
         let text = "---\ntitle: \"Hello\"\ncount: 5\n---\n\n## Other\n\nText.\n";
         let parsed = parse_text(text, "test.md", false);
         let errors = validate_file(&parsed, &make_schema());
-        assert!(errors.iter().any(|e| e.error_type == "missing_section"));
+        assert!(errors.iter().any(|e| e.error_type == ValidationErrorKind::MissingSection));
     }
 
     #[test]
@@ -587,7 +587,7 @@ mod tests {
         let text = "---\ntitle: \"Hello\"\ncount: 5\n---\n\n## Summary\n\nFirst.\n\n## Summary\n\nSecond.\n";
         let parsed = parse_text(text, "test.md", false);
         let errors = validate_file(&parsed, &make_schema());
-        assert!(errors.iter().any(|e| e.error_type == "duplicate_section"));
+        assert!(errors.iter().any(|e| e.error_type == ValidationErrorKind::DuplicateSection));
     }
 
     // --- Foreign key validation tests ---
@@ -676,7 +676,7 @@ mod tests {
         let config = make_fk_config();
         let errors = validate_foreign_keys(&config, &tables);
         assert_eq!(errors.len(), 1);
-        assert_eq!(errors[0].error_type, "fk_violation");
+        assert_eq!(errors[0].error_type, ValidationErrorKind::FkViolation);
         assert!(errors[0].message.contains("nonexistent.md"));
     }
 
@@ -709,7 +709,7 @@ mod tests {
         };
         let errors = validate_foreign_keys(&config, &tables);
         assert_eq!(errors.len(), 1);
-        assert_eq!(errors[0].error_type, "fk_missing_table");
+        assert_eq!(errors[0].error_type, ValidationErrorKind::FkMissingTable);
     }
 
     #[test]

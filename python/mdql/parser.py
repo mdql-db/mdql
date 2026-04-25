@@ -101,11 +101,9 @@ def parse_file(
         str(rel) if rel else None,
         normalize,
     )
-    # Extract raw YAML lines for date quoting detection
     p = Path(path)
     raw_yaml_lines = _extract_yaml_lines(p)
     pf = ParsedFile(data, raw_yaml_lines=raw_yaml_lines)
-    # Store folder for validator to use later
     if rel is not None:
         pf._folder = Path(rel) if not isinstance(rel, Path) else rel
     elif p.is_absolute():

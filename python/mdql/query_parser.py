@@ -61,7 +61,6 @@ def parse_query(sql: str):
     except RuntimeError as e:
         raise QueryParseError(str(e)) from None
 
-    # Wrap SelectQuery in our Query class for .where access
     if isinstance(result, _RustQuery):
         return Query(result)
     return result

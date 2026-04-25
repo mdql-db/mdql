@@ -93,7 +93,7 @@ fn load_md_files(
                 Err(e) => {
                     let ve = ValidationError {
                         file_path: md_file.to_string_lossy().to_string(),
-                        error_type: "parse_error".to_string(),
+                        error_type: crate::errors::ValidationErrorKind::ParseError,
                         field: None,
                         message: e.to_string(),
                         line_number: None,
@@ -160,7 +160,7 @@ pub fn load_database(
         if tables.contains_key(&view_def.name) {
             all_errors.push(ValidationError {
                 file_path: MDQL_FILENAME.to_string(),
-                error_type: "view_error".to_string(),
+                error_type: crate::errors::ValidationErrorKind::ViewError,
                 field: Some(view_def.name.clone()),
                 message: format!(
                     "View '{}' conflicts with existing table name",
@@ -178,7 +178,7 @@ pub fn load_database(
             Err(e) => {
                 all_errors.push(ValidationError {
                     file_path: MDQL_FILENAME.to_string(),
-                    error_type: "view_error".to_string(),
+                    error_type: crate::errors::ValidationErrorKind::ViewError,
                     field: Some(view_def.name.clone()),
                     message: format!("View '{}': {}", view_def.name, e),
                     line_number: None,

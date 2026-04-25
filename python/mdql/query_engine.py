@@ -17,7 +17,6 @@ def execute_query(query, rows, schema=None):
     Returns:
         (rows, columns) tuple where rows is list[dict] and columns is list[str].
     """
-    # Reconstruct SQL from the query object (Rust engine takes SQL string)
     sql = _reconstruct_sql(query)
     result_rows, columns = _rust_execute_query_rows(sql, rows)
     return list(result_rows), list(columns)
@@ -25,7 +24,6 @@ def execute_query(query, rows, schema=None):
 
 def _reconstruct_sql(query):
     """Best-effort SQL reconstruction from a Query/wrapper object."""
-    # Unwrap our Query wrapper if present
     inner = getattr(query, '_inner', query)
 
     parts = ["SELECT"]
@@ -47,12 +45,10 @@ def _reconstruct_sql(query):
     table = inner.table if hasattr(inner, 'table') else query.table
     parts.append(f"FROM {table}")
 
-    # Table alias
     alias = getattr(inner, 'table_alias', None) or getattr(query, 'table_alias', None)
     if alias:
         parts.append(alias)
 
-    # JOIN
     join = getattr(inner, 'join', None) or getattr(query, 'join', None)
     if join:
         parts.append(f"JOIN {join.table}")
@@ -60,10 +56,8 @@ def _reconstruct_sql(query):
             parts.append(join.alias)
         parts.append(f"ON {join.left_col} = {join.right_col}")
 
-    # WHERE
     where_clause = getattr(inner, 'where_clause', None) or getattr(query, 'where_', None)
     if where_clause is None:
-        # Try the __getattr__ path
         try:
             where_clause = query.where_
         except AttributeError:
@@ -71,7 +65,6 @@ def _reconstruct_sql(query):
     if where_clause is not None:
         parts.append(f"WHERE {_reconstruct_where(where_clause)}")
 
-    # ORDER BY
     order_by = getattr(inner, 'order_by', None) or getattr(query, 'order_by', None)
     if order_by:
         order_parts = []
@@ -81,7 +74,6 @@ def _reconstruct_sql(query):
             order_parts.append(f"{col} {direction}")
         parts.append(f"ORDER BY {', '.join(order_parts)}")
 
-    # LIMIT
     limit = getattr(inner, 'limit', None) or getattr(query, 'limit', None)
     if limit is not None:
         parts.append(f"LIMIT {limit}")

@@ -1,4 +1,5 @@
 //! B-tree indexes on frontmatter fields for fast filtered queries.
+#![allow(dead_code)]
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -69,7 +70,6 @@ fn value_to_key(v: &Value) -> Option<IndexKey> {
     }
 }
 
-#[allow(dead_code)]
 impl TableIndex {
     /// Build indexes for all frontmatter fields.
     pub fn build(rows: &[Row], schema: &Schema) -> Self {

@@ -16,18 +16,9 @@ def validate_file(parsed, schema) -> list[ValidationError]:
     """
     path = parsed.path if hasattr(parsed, 'path') else parsed["path"]
 
-    # We need the folder path. Infer from the ParsedFile: its path is relative
-    # to the table folder, and the file was parsed from there.
-    # The _rust_validate_file needs the folder path to re-load the schema.
-    # We need to figure out the folder. The parsed file has _folder if set,
-    # or we can get it from the schema.
+    # Rust FFI re-parses from disk, so it needs the table folder path.
     folder = getattr(parsed, '_folder', None)
     if folder is None:
-        # The path in ParsedFile is relative (e.g. "simple.md").
-        # We can't derive the folder from just a relative path and a Schema.
-        # But the _rust_validate_file actually re-parses from folder/path,
-        # so we need to know the folder somehow.
-        # For backward compat, store it on ParsedFile during parse_file().
         raise ValueError(
             "Cannot determine table folder for validation. "
             "Make sure parse_file was called with a folder/relative_to argument."

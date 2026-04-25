@@ -50,7 +50,6 @@ class Schema:
         self.sections = sections
         self.rules = rules
 
-    # Convenience accessors for rules
     @property
     def reject_unknown_frontmatter(self):
         return self.rules.reject_unknown_frontmatter

@@ -60,7 +60,7 @@ fn collect_fts_results_inner(
 ) {
     match clause {
         WhereClause::Comparison(cmp) => {
-            if (cmp.op == "LIKE" || cmp.op == "NOT LIKE") && schema.sections.contains_key(&cmp.column) {
+            if (cmp.op == CmpOp::Like || cmp.op == CmpOp::NotLike) && schema.sections.contains_key(&cmp.column) {
                 if let Some(SqlValue::String(pattern)) = &cmp.value {
                     // Strip SQL wildcards for Tantivy query
                     let search_term = pattern.replace('%', " ").replace('_', " ").trim().to_string();
@@ -380,21 +380,20 @@ fn evaluate_with_fts(clause: &WhereClause, row: &Row, fts: &FtsResults) -> bool 
     match clause {
         WhereClause::BoolOp(bop) => {
             let left = evaluate_with_fts(&bop.left, row, fts);
-            match bop.op.as_str() {
-                "AND" => left && evaluate_with_fts(&bop.right, row, fts),
-                "OR" => left || evaluate_with_fts(&bop.right, row, fts),
-                _ => false,
+            match bop.op {
+                BoolOpKind::And => left && evaluate_with_fts(&bop.right, row, fts),
+                BoolOpKind::Or => left || evaluate_with_fts(&bop.right, row, fts),
             }
         }
         WhereClause::Comparison(cmp) => {
             // Check if we have FTS results for this comparison
-            if cmp.op == "LIKE" || cmp.op == "NOT LIKE" {
+            if cmp.op == CmpOp::Like || cmp.op == CmpOp::NotLike {
                 if let Some(SqlValue::String(pattern)) = &cmp.value {
                     let key = (cmp.column.clone(), pattern.clone());
                     if let Some(matching_paths) = fts.get(&key) {
                         let row_path = row.get("path").and_then(|v| v.as_str()).unwrap_or("");
                         let matched = matching_paths.contains(row_path);
-                        return if cmp.op == "LIKE" { matched } else { !matched };
+                        return if cmp.op == CmpOp::Like { matched } else { !matched };
                     }
                 }
             }
@@ -418,10 +417,9 @@ pub fn evaluate(clause: &WhereClause, row: &Row) -> bool {
     match clause {
         WhereClause::BoolOp(bop) => {
             let left = evaluate(&bop.left, row);
-            match bop.op.as_str() {
-                "AND" => left && evaluate(&bop.right, row),
-                "OR" => left || evaluate(&bop.right, row),
-                _ => false,
+            match bop.op {
+                BoolOpKind::And => left && evaluate(&bop.right, row),
+                BoolOpKind::Or => left || evaluate(&bop.right, row),
             }
         }
         WhereClause::Comparison(cmp) => evaluate_comparison(cmp, row),
@@ -644,7 +642,7 @@ fn apply_arith_op(op: &ArithOp, lv: &Value, rv: &Value) -> Value {
 fn evaluate_comparison(cmp: &Comparison, row: &Row) -> bool {
     // If we have expression-based comparison (new path), use it for standard ops
     if let (Some(left_expr), Some(right_expr)) = (&cmp.left_expr, &cmp.right_expr) {
-        if ["=", "!=", "<", ">", "<=", ">="].contains(&cmp.op.as_str()) {
+        if matches!(cmp.op, CmpOp::Eq | CmpOp::Ne | CmpOp::Lt | CmpOp::Gt | CmpOp::Le | CmpOp::Ge) {
             let left_val = evaluate_expr(left_expr, row);
             let right_val = evaluate_expr(right_expr, row);
 
@@ -656,13 +654,13 @@ fn evaluate_comparison(cmp: &Comparison, row: &Row) -> bool {
             // Coerce for comparison: if types differ, try int→float
             let ord = compare_model_values(&left_val, &right_val);
 
-            return match cmp.op.as_str() {
-                "=" => ord == Some(Ordering::Equal),
-                "!=" => ord != Some(Ordering::Equal),
-                "<" => ord == Some(Ordering::Less),
-                ">" => ord == Some(Ordering::Greater),
-                "<=" => matches!(ord, Some(Ordering::Less | Ordering::Equal)),
-                ">=" => matches!(ord, Some(Ordering::Greater | Ordering::Equal)),
+            return match cmp.op {
+                CmpOp::Eq => ord == Some(Ordering::Equal),
+                CmpOp::Ne => ord != Some(Ordering::Equal),
+                CmpOp::Lt => ord == Some(Ordering::Less),
+                CmpOp::Gt => ord == Some(Ordering::Greater),
+                CmpOp::Le => matches!(ord, Some(Ordering::Less | Ordering::Equal)),
+                CmpOp::Ge => matches!(ord, Some(Ordering::Greater | Ordering::Equal)),
                 _ => false,
             };
         }
@@ -671,10 +669,10 @@ fn evaluate_comparison(cmp: &Comparison, row: &Row) -> bool {
     // Fall back to legacy column-based comparison for IS NULL, IN, LIKE, etc.
     let actual = row.get(&cmp.column);
 
-    if cmp.op == "IS NULL" {
+    if cmp.op == CmpOp::IsNull {
         return actual.map_or(true, |v| v.is_null());
     }
-    if cmp.op == "IS NOT NULL" {
+    if cmp.op == CmpOp::IsNotNull {
         return actual.map_or(false, |v| !v.is_null());
     }
 
@@ -688,23 +686,23 @@ fn evaluate_comparison(cmp: &Comparison, row: &Row) -> bool {
         None => return false,
     };
 
-    match cmp.op.as_str() {
-        "=" => eq_match(actual, expected),
-        "!=" => !eq_match(actual, expected),
-        "<" => compare_values(actual, expected) == Some(Ordering::Less),
-        ">" => compare_values(actual, expected) == Some(Ordering::Greater),
-        "<=" => matches!(compare_values(actual, expected), Some(Ordering::Less | Ordering::Equal)),
-        ">=" => matches!(compare_values(actual, expected), Some(Ordering::Greater | Ordering::Equal)),
-        "LIKE" => like_match(actual, expected),
-        "NOT LIKE" => !like_match(actual, expected),
-        "IN" => {
+    match cmp.op {
+        CmpOp::Eq => eq_match(actual, expected),
+        CmpOp::Ne => !eq_match(actual, expected),
+        CmpOp::Lt => compare_values(actual, expected) == Some(Ordering::Less),
+        CmpOp::Gt => compare_values(actual, expected) == Some(Ordering::Greater),
+        CmpOp::Le => matches!(compare_values(actual, expected), Some(Ordering::Less | Ordering::Equal)),
+        CmpOp::Ge => matches!(compare_values(actual, expected), Some(Ordering::Greater | Ordering::Equal)),
+        CmpOp::Like => like_match(actual, expected),
+        CmpOp::NotLike => !like_match(actual, expected),
+        CmpOp::In => {
             if let SqlValue::List(items) = expected {
                 items.iter().any(|v| eq_match(actual, v))
             } else {
                 eq_match(actual, expected)
             }
         }
-        _ => false,
+        CmpOp::IsNull | CmpOp::IsNotNull => unreachable!(),
     }
 }
 
@@ -797,7 +795,7 @@ fn like_match(actual: &Value, pattern: &SqlValue) -> bool {
 
 fn compare_values(actual: &Value, expected: &SqlValue) -> Option<Ordering> {
     let coerced = coerce_sql_to_value(expected, actual);
-    actual.partial_cmp(&coerced).map(|o| o)
+    actual.partial_cmp(&coerced)
 }
 
 /// Convert a SqlValue to a Value for index lookups (without a target type for coercion).
@@ -836,13 +834,13 @@ fn try_index_filter(
             if !index.has_index(&cmp.column) {
                 return None;
             }
-            match cmp.op.as_str() {
-                "=" => {
+            match cmp.op {
+                CmpOp::Eq => {
                     let val = sql_value_to_index_value(cmp.value.as_ref()?);
                     let paths = index.lookup_eq(&cmp.column, &val);
                     Some(paths.into_iter().map(|s| s.to_string()).collect())
                 }
-                "<" => {
+                CmpOp::Lt => {
                     let val = sql_value_to_index_value(cmp.value.as_ref()?);
                     // exclusive upper bound: use range with max < val
                     // lookup_range is inclusive, so we get all <= val then remove exact matches
@@ -850,23 +848,23 @@ fn try_index_filter(
                     let eq_paths: std::collections::HashSet<&str> = index.lookup_eq(&cmp.column, &val).into_iter().collect();
                     Some(range_paths.into_iter().filter(|p| !eq_paths.contains(p)).map(|s| s.to_string()).collect())
                 }
-                ">" => {
+                CmpOp::Gt => {
                     let val = sql_value_to_index_value(cmp.value.as_ref()?);
                     let range_paths = index.lookup_range(&cmp.column, Some(&val), None);
                     let eq_paths: std::collections::HashSet<&str> = index.lookup_eq(&cmp.column, &val).into_iter().collect();
                     Some(range_paths.into_iter().filter(|p| !eq_paths.contains(p)).map(|s| s.to_string()).collect())
                 }
-                "<=" => {
+                CmpOp::Le => {
                     let val = sql_value_to_index_value(cmp.value.as_ref()?);
                     let paths = index.lookup_range(&cmp.column, None, Some(&val));
                     Some(paths.into_iter().map(|s| s.to_string()).collect())
                 }
-                ">=" => {
+                CmpOp::Ge => {
                     let val = sql_value_to_index_value(cmp.value.as_ref()?);
                     let paths = index.lookup_range(&cmp.column, Some(&val), None);
                     Some(paths.into_iter().map(|s| s.to_string()).collect())
                 }
-                "IN" => {
+                CmpOp::In => {
                     if let Some(SqlValue::List(items)) = &cmp.value {
                         let vals: Vec<Value> = items.iter().map(sql_value_to_index_value).collect();
                         let paths = index.lookup_in(&cmp.column, &vals);
@@ -881,8 +879,8 @@ fn try_index_filter(
         WhereClause::BoolOp(bop) => {
             let left = try_index_filter(&bop.left, index);
             let right = try_index_filter(&bop.right, index);
-            match bop.op.as_str() {
-                "AND" => {
+            match bop.op {
+                BoolOpKind::And => {
                     match (left, right) {
                         (Some(l), Some(r)) => Some(l.intersection(&r).cloned().collect()),
                         (Some(l), None) => Some(l), // narrow with left, scan-verify right
@@ -890,13 +888,12 @@ fn try_index_filter(
                         (None, None) => None,
                     }
                 }
-                "OR" => {
+                BoolOpKind::Or => {
                     match (left, right) {
                         (Some(l), Some(r)) => Some(l.union(&r).cloned().collect()),
                         _ => None, // Can't use index if either side needs full scan
                     }
                 }
-                _ => None,
             }
         }
     }
@@ -1044,7 +1041,7 @@ mod tests {
             joins: vec![],
             where_clause: Some(WhereClause::Comparison(Comparison {
                 column: "count".into(),
-                op: ">".into(),
+                op: CmpOp::Gt,
                 value: Some(SqlValue::Int(5)),
                 left_expr: Some(Expr::Column("count".into())),
                 right_expr: Some(Expr::Literal(SqlValue::Int(5))),
@@ -1109,7 +1106,7 @@ mod tests {
             joins: vec![],
             where_clause: Some(WhereClause::Comparison(Comparison {
                 column: "title".into(),
-                op: "LIKE".into(),
+                op: CmpOp::Like,
                 value: Some(SqlValue::String("%lph%".into())),
                 left_expr: Some(Expr::Column("title".into())),
                 right_expr: None,
@@ -1137,7 +1134,7 @@ mod tests {
             joins: vec![],
             where_clause: Some(WhereClause::Comparison(Comparison {
                 column: "optional".into(),
-                op: "IS NULL".into(),
+                op: CmpOp::IsNull,
                 value: None,
                 left_expr: Some(Expr::Column("optional".into())),
                 right_expr: None,
@@ -1309,7 +1306,7 @@ mod tests {
             whens: vec![(
                 WhereClause::Comparison(Comparison {
                     column: "status".into(),
-                    op: "=".into(),
+                    op: CmpOp::Eq,
                     value: Some(SqlValue::String("ACTIVE".into())),
                     left_expr: Some(Expr::Column("status".into())),
                     right_expr: Some(Expr::Literal(SqlValue::String("ACTIVE".into()))),
@@ -1328,7 +1325,7 @@ mod tests {
             whens: vec![(
                 WhereClause::Comparison(Comparison {
                     column: "status".into(),
-                    op: "=".into(),
+                    op: CmpOp::Eq,
                     value: Some(SqlValue::String("ACTIVE".into())),
                     left_expr: Some(Expr::Column("status".into())),
                     right_expr: Some(Expr::Literal(SqlValue::String("ACTIVE".into()))),
@@ -1347,7 +1344,7 @@ mod tests {
             whens: vec![(
                 WhereClause::Comparison(Comparison {
                     column: "x".into(),
-                    op: "=".into(),
+                    op: CmpOp::Eq,
                     value: Some(SqlValue::Int(1)),
                     left_expr: Some(Expr::Column("x".into())),
                     right_expr: Some(Expr::Literal(SqlValue::Int(1))),

@@ -25,6 +25,10 @@ static SLUGIFY_WHITESPACE: LazyLock<Regex> =
 static SLUGIFY_MULTI_DASH: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"-+").unwrap());
 
+fn normalize_filename(name: &str) -> String {
+    if name.ends_with(".md") { name.to_string() } else { format!("{}.md", name) }
+}
+
 pub fn slugify(text: &str, max_length: usize) -> String {
     let slug = text.to_lowercase();
     let slug = slug.trim();
@@ -337,11 +341,7 @@ impl Table {
             }
         };
 
-        let fname = if fname.ends_with(".md") {
-            fname
-        } else {
-            format!("{}.md", fname)
-        };
+        let fname = normalize_filename(&fname);
 
         let filepath = self.path.join(&fname);
 
@@ -404,11 +404,7 @@ impl Table {
         data: &HashMap<String, Value>,
         body: Option<&str>,
     ) -> crate::errors::Result<PathBuf> {
-        let fname = if filename.ends_with(".md") {
-            filename.to_string()
-        } else {
-            format!("{}.md", filename)
-        };
+        let fname = normalize_filename(filename);
 
         let filepath = self.path.join(&fname);
         if !filepath.exists() {
@@ -469,11 +465,7 @@ impl Table {
     }
 
     fn delete_no_lock(&self, filename: &str) -> crate::errors::Result<PathBuf> {
-        let fname = if filename.ends_with(".md") {
-            filename.to_string()
-        } else {
-            format!("{}.md", filename)
-        };
+        let fname = normalize_filename(filename);
 
         let filepath = self.path.join(&fname);
         if !filepath.exists() {
@@ -882,16 +874,8 @@ impl Database {
         old_filename: &str,
         new_filename: &str,
     ) -> crate::errors::Result<String> {
-        let old_name = if old_filename.ends_with(".md") {
-            old_filename.to_string()
-        } else {
-            format!("{}.md", old_filename)
-        };
-        let new_name = if new_filename.ends_with(".md") {
-            new_filename.to_string()
-        } else {
-            format!("{}.md", new_filename)
-        };
+        let old_name = normalize_filename(old_filename);
+        let new_name = normalize_filename(new_filename);
 
         let table = self.tables.get(table_name).ok_or_else(|| {
             MdqlError::General(format!("Table '{}' not found", table_name))

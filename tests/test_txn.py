@@ -121,7 +121,7 @@ def _lock_worker(folder_str: str, result_file: str):
     folder = Path(folder_str)
     with table_lock(folder):
         Path(result_file).write_text(str(time.monotonic()))
-        time.sleep(0.1)  # Hold lock briefly
+        time.sleep(0.5)
 
 
 class TestTableLock:
@@ -148,7 +148,7 @@ class TestTableLock:
         )
 
         p1.start()
-        time.sleep(0.02)  # Let p1 acquire first
+        time.sleep(0.1)
         p2.start()
 
         p1.join(timeout=5)
@@ -161,8 +161,7 @@ class TestTableLock:
         t1 = float(Path(result_a).read_text())
         t2 = float(Path(result_b).read_text())
 
-        # They should not overlap — at least 0.05s apart
-        assert abs(t2 - t1) >= 0.05
+        assert abs(t2 - t1) >= 0.3
 
 
 # ── multi_file_txn ────────────────────────────────────────────────────────

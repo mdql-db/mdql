@@ -59,7 +59,7 @@ impl FkWatcher {
             {
                 let fk_errors: Vec<_> = errors
                     .into_iter()
-                    .filter(|e| e.error_type == "fk_violation" || e.error_type == "fk_missing_table")
+                    .filter(|e| e.error_type == crate::errors::ValidationErrorKind::FkViolation || e.error_type == crate::errors::ValidationErrorKind::FkMissingTable)
                     .collect();
                 let _ = tx.send(fk_errors);
             }

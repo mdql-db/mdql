@@ -19,8 +19,6 @@ static H2_RE: LazyLock<Regex> =
 // ── Section span detection ────────────────────────────────────────────────
 
 struct SectionSpan {
-    #[allow(dead_code)]
-    raw_heading: String,
     normalized_heading: String,
     heading_line_idx: usize,
     end_line_idx: usize, // exclusive
@@ -75,7 +73,6 @@ fn find_sections(lines: &[String], normalize: bool) -> Vec<SectionSpan> {
                 raw_h.clone()
             };
             sections.push(SectionSpan {
-                raw_heading: raw_h,
                 normalized_heading: norm_h,
                 heading_line_idx: i,
                 end_line_idx: lines.len(),

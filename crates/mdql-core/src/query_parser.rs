@@ -773,7 +773,7 @@ impl Parser {
         while self.match_keyword("OR") {
             let right = self.parse_and_expr()?;
             left = WhereClause::BoolOp(BoolOp {
-                op: "OR".into(),
+                op: BoolOpKind::Or,
                 left: Box::new(left),
                 right: Box::new(right),
             });
@@ -786,7 +786,7 @@ impl Parser {
         while self.match_keyword("AND") {
             let right = self.parse_comparison()?;
             left = WhereClause::BoolOp(BoolOp {
-                op: "AND".into(),
+                op: BoolOpKind::And,
                 left: Box::new(left),
                 right: Box::new(right),
             });
@@ -822,7 +822,7 @@ impl Parser {
                 self.expect("keyword", Some("NULL"))?;
                 return Ok(WhereClause::Comparison(Comparison {
                     column: col,
-                    op: "IS NOT NULL".into(),
+                    op: CmpOp::IsNotNull,
                     value: None,
                     left_expr: Some(left_expr),
                     right_expr: None,
@@ -831,7 +831,7 @@ impl Parser {
             self.expect("keyword", Some("NULL"))?;
             return Ok(WhereClause::Comparison(Comparison {
                 column: col,
-                op: "IS NULL".into(),
+                op: CmpOp::IsNull,
                 value: None,
                 left_expr: Some(left_expr),
                 right_expr: None,
@@ -849,7 +849,7 @@ impl Parser {
             self.expect("op", Some(")"))?;
             return Ok(WhereClause::Comparison(Comparison {
                 column: col,
-                op: "IN".into(),
+                op: CmpOp::In,
                 value: Some(SqlValue::List(values)),
                 left_expr: Some(left_expr),
                 right_expr: None,
@@ -861,7 +861,7 @@ impl Parser {
             let val = self.parse_value()?;
             return Ok(WhereClause::Comparison(Comparison {
                 column: col,
-                op: "LIKE".into(),
+                op: CmpOp::Like,
                 value: Some(val),
                 left_expr: Some(left_expr),
                 right_expr: None,
@@ -874,7 +874,7 @@ impl Parser {
                 let val = self.parse_value()?;
                 return Ok(WhereClause::Comparison(Comparison {
                     column: col,
-                    op: "NOT LIKE".into(),
+                    op: CmpOp::NotLike,
                     value: Some(val),
                     left_expr: Some(left_expr),
                     right_expr: None,
@@ -887,7 +887,16 @@ impl Parser {
         if let Some(t) = self.peek() {
             if t.token_type == "op" && ["=", "!=", "<", ">", "<=", ">="].contains(&t.value.as_str())
             {
-                let op = self.advance().value;
+                let op_str = self.advance().value;
+                let op = match op_str.as_str() {
+                    "=" => CmpOp::Eq,
+                    "!=" => CmpOp::Ne,
+                    "<" => CmpOp::Lt,
+                    ">" => CmpOp::Gt,
+                    "<=" => CmpOp::Le,
+                    ">=" => CmpOp::Ge,
+                    _ => unreachable!(),
+                };
                 // Parse right side as expression
                 let right_expr = self.parse_additive()?;
                 // Extract SqlValue for backward compat (simple literal on right side)
@@ -1161,7 +1170,7 @@ mod tests {
         let stmt = parse_query("SELECT title FROM test WHERE categories LIKE '%defi%'").unwrap();
         if let Statement::Select(q) = stmt {
             if let Some(WhereClause::Comparison(c)) = q.where_clause {
-                assert_eq!(c.op, "LIKE");
+                assert_eq!(c.op, CmpOp::Like);
                 assert_eq!(c.value, Some(SqlValue::String("%defi%".into())));
             } else {
                 panic!("Expected LIKE comparison");
@@ -1177,7 +1186,7 @@ mod tests {
             parse_query("SELECT * FROM test WHERE status IN ('ACTIVE', 'LIVE')").unwrap();
         if let Statement::Select(q) = stmt {
             if let Some(WhereClause::Comparison(c)) = q.where_clause {
-                assert_eq!(c.op, "IN");
+                assert_eq!(c.op, CmpOp::In);
             } else {
                 panic!("Expected IN comparison");
             }
@@ -1191,7 +1200,7 @@ mod tests {
         let stmt = parse_query("SELECT * FROM test WHERE title IS NULL").unwrap();
         if let Statement::Select(q) = stmt {
             if let Some(WhereClause::Comparison(c)) = q.where_clause {
-                assert_eq!(c.op, "IS NULL");
+                assert_eq!(c.op, CmpOp::IsNull);
             } else {
                 panic!("Expected IS NULL comparison");
             }
@@ -1438,7 +1447,7 @@ mod tests {
         let stmt = parse_query("SELECT * FROM test WHERE a + b > 10").unwrap();
         if let Statement::Select(q) = stmt {
             if let Some(WhereClause::Comparison(c)) = q.where_clause {
-                assert_eq!(c.op, ">");
+                assert_eq!(c.op, CmpOp::Gt);
                 assert!(matches!(&c.left_expr, Some(Expr::BinaryOp { op: ArithOp::Add, .. })));
                 assert!(matches!(&c.right_expr, Some(Expr::Literal(SqlValue::Int(10)))));
             } else {
@@ -1454,7 +1463,7 @@ mod tests {
         let stmt = parse_query("SELECT * FROM test WHERE a * 2 > b + 1").unwrap();
         if let Statement::Select(q) = stmt {
             if let Some(WhereClause::Comparison(c)) = q.where_clause {
-                assert_eq!(c.op, ">");
+                assert_eq!(c.op, CmpOp::Gt);
                 assert!(matches!(&c.left_expr, Some(Expr::BinaryOp { op: ArithOp::Mul, .. })));
                 assert!(matches!(&c.right_expr, Some(Expr::BinaryOp { op: ArithOp::Add, .. })));
             } else {

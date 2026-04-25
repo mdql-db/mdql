@@ -6,7 +6,7 @@ use clap::{Parser, Subcommand};
 
 use mdql_core::api::{Table, coerce_cli_value};
 use mdql_core::database::is_database_dir;
-use mdql_core::errors::MdqlError;
+use mdql_core::errors::{MdqlError, ValidationErrorKind};
 use mdql_core::executor::{self, QueryResult};
 use mdql_core::loader::load_table;
 use mdql_core::model::Value;
@@ -239,8 +239,8 @@ fn cmd_validate(folder: &std::path::Path, quiet: bool) -> Result<(), MdqlError> 
         // Database-level validation: schema + foreign keys
         let (_db_config, tables, errors) = mdql_core::loader::load_database(folder)?;
 
-        let schema_errors: Vec<_> = errors.iter().filter(|e| e.error_type != "fk_violation" && e.error_type != "fk_missing_table").collect();
-        let fk_errors: Vec<_> = errors.iter().filter(|e| e.error_type == "fk_violation" || e.error_type == "fk_missing_table").collect();
+        let schema_errors: Vec<_> = errors.iter().filter(|e| e.error_type != ValidationErrorKind::FkViolation && e.error_type != ValidationErrorKind::FkMissingTable).collect();
+        let fk_errors: Vec<_> = errors.iter().filter(|e| e.error_type == ValidationErrorKind::FkViolation || e.error_type == ValidationErrorKind::FkMissingTable).collect();
 
         if !quiet {
             // Report per-table summary
@@ -308,7 +308,7 @@ fn cmd_validate(folder: &std::path::Path, quiet: bool) -> Result<(), MdqlError> 
 fn print_fk_warnings(errors: &[mdql_core::errors::ValidationError]) {
     let fk_errors: Vec<_> = errors
         .iter()
-        .filter(|e| e.error_type == "fk_violation" || e.error_type == "fk_missing_table")
+        .filter(|e| e.error_type == ValidationErrorKind::FkViolation || e.error_type == ValidationErrorKind::FkMissingTable)
         .collect();
     if !fk_errors.is_empty() {
         for err in &fk_errors {

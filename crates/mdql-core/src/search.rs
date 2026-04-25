@@ -1,4 +1,5 @@
 //! Full-text search on section content using Tantivy.
+#![allow(dead_code)]
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -19,7 +20,6 @@ pub(crate) struct TableSearcher {
     section_fields: HashMap<String, tantivy::schema::Field>,
 }
 
-#[allow(dead_code)]
 impl TableSearcher {
     /// Build a Tantivy index from rows.
     /// `section_names` are the section column names to index.

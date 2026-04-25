@@ -91,9 +91,30 @@ pub struct OrderSpec {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum CmpOp {
+    Eq,
+    Ne,
+    Lt,
+    Gt,
+    Le,
+    Ge,
+    Like,
+    NotLike,
+    In,
+    IsNull,
+    IsNotNull,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum BoolOpKind {
+    And,
+    Or,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Comparison {
     pub column: String,
-    pub op: String,
+    pub op: CmpOp,
     pub value: Option<SqlValue>,
     pub left_expr: Option<Expr>,
     pub right_expr: Option<Expr>,
@@ -101,7 +122,7 @@ pub struct Comparison {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct BoolOp {
-    pub op: String,
+    pub op: BoolOpKind,
     pub left: Box<WhereClause>,
     pub right: Box<WhereClause>,
 }

@@ -431,18 +431,41 @@ struct PyDropViewQuery {
     view_name: String,
 }
 
+fn cmp_op_to_str(op: &qp::CmpOp) -> &'static str {
+    match op {
+        qp::CmpOp::Eq => "=",
+        qp::CmpOp::Ne => "!=",
+        qp::CmpOp::Lt => "<",
+        qp::CmpOp::Gt => ">",
+        qp::CmpOp::Le => "<=",
+        qp::CmpOp::Ge => ">=",
+        qp::CmpOp::Like => "LIKE",
+        qp::CmpOp::NotLike => "NOT LIKE",
+        qp::CmpOp::In => "IN",
+        qp::CmpOp::IsNull => "IS NULL",
+        qp::CmpOp::IsNotNull => "IS NOT NULL",
+    }
+}
+
+fn bool_op_to_str(op: &qp::BoolOpKind) -> &'static str {
+    match op {
+        qp::BoolOpKind::And => "AND",
+        qp::BoolOpKind::Or => "OR",
+    }
+}
+
 fn where_clause_to_py(py: Python<'_>, wc: &qp::WhereClause) -> PyObject {
     match wc {
         qp::WhereClause::Comparison(cmp) => {
             Py::new(py, PyComparison {
                 column: cmp.column.clone(),
-                op: cmp.op.clone(),
+                op: cmp_op_to_str(&cmp.op).to_string(),
                 value_inner: cmp.value.clone(),
             }).unwrap().into_pyobject(py).unwrap().into_any().unbind()
         }
         qp::WhereClause::BoolOp(bop) => {
             Py::new(py, PyBoolOp {
-                op: bop.op.clone(),
+                op: bool_op_to_str(&bop.op).to_string(),
                 left_inner: *bop.left.clone(),
                 right_inner: *bop.right.clone(),
             }).unwrap().into_pyobject(py).unwrap().into_any().unbind()
@@ -946,7 +969,7 @@ fn validate_file(py: Python<'_>, parsed_dict: &Bound<'_, PyDict>, schema_folder:
         errors.iter().map(|e| {
             let d = PyDict::new(py);
             d.set_item("file_path", &e.file_path).unwrap();
-            d.set_item("error_type", &e.error_type).unwrap();
+            d.set_item("error_type", e.error_type.as_str()).unwrap();
             d.set_item("message", &e.message).unwrap();
             d.set_item("field", e.field.as_deref()).unwrap();
             d.set_item("line_number", e.line_number).unwrap();
