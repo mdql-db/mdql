@@ -21,10 +21,18 @@ pub struct ViewDef {
 }
 
 #[derive(Debug, Clone)]
+pub struct SyncConfig {
+    pub remote_host: String,
+    pub remote_path: String,
+    pub ssh_key: Option<String>,
+}
+
+#[derive(Debug, Clone)]
 pub struct DatabaseConfig {
     pub name: String,
     pub foreign_keys: Vec<ForeignKey>,
     pub views: Vec<ViewDef>,
+    pub sync: Option<SyncConfig>,
 }
 
 pub fn is_database_dir(folder: &Path) -> bool {
@@ -178,10 +186,51 @@ pub fn load_database_config(db_dir: &Path) -> crate::errors::Result<DatabaseConf
         }
     }
 
+    let sync = if let Some(sync_val) = fm_map.get(&serde_yaml::Value::String("sync".into())) {
+        let sync_map = sync_val.as_mapping().ok_or_else(|| {
+            MdqlError::DatabaseConfig(format!(
+                "{}: 'sync' must be a mapping with 'remote_host' and 'remote_path'",
+                MDQL_FILENAME
+            ))
+        })?;
+        let remote_host = sync_map
+            .get(&serde_yaml::Value::String("remote_host".into()))
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| {
+                MdqlError::DatabaseConfig(format!(
+                    "{}: sync must have 'remote_host' as a string",
+                    MDQL_FILENAME
+                ))
+            })?
+            .to_string();
+        let remote_path = sync_map
+            .get(&serde_yaml::Value::String("remote_path".into()))
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| {
+                MdqlError::DatabaseConfig(format!(
+                    "{}: sync must have 'remote_path' as a string",
+                    MDQL_FILENAME
+                ))
+            })?
+            .to_string();
+        let ssh_key = sync_map
+            .get(&serde_yaml::Value::String("ssh_key".into()))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        Some(SyncConfig {
+            remote_host,
+            remote_path,
+            ssh_key,
+        })
+    } else {
+        None
+    };
+
     Ok(DatabaseConfig {
         name,
         foreign_keys: fks,
         views,
+        sync,
     })
 }
 

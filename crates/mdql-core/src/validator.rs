@@ -653,6 +653,7 @@ mod tests {
                 to_column: "path".into(),
             }],
             views: vec![],
+            sync: None,
         }
     }
 
@@ -706,6 +707,7 @@ mod tests {
                 to_column: "path".into(),
             }],
             views: vec![],
+            sync: None,
         };
         let errors = validate_foreign_keys(&config, &tables);
         assert_eq!(errors.len(), 1);
@@ -733,6 +735,7 @@ mod tests {
                 to_column: "path".into(),
             }],
             views: vec![],
+            sync: None,
         };
         let errors = validate_foreign_keys(&config, &tables);
         assert!(errors.is_empty());
@@ -759,6 +762,7 @@ mod tests {
                 to_column: "path".into(),
             }],
             views: vec![],
+            sync: None,
         };
         let errors = validate_foreign_keys(&config, &tables);
         assert_eq!(errors.len(), 1);

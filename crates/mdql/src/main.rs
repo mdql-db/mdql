@@ -105,6 +105,14 @@ enum Commands {
         #[arg(short, long, default_value = "3000")]
         port: u16,
     },
+    /// Commit, push, and pull on remote server
+    Sync {
+        /// Path to database folder (falls back to MDQL_DATABASE_PATH)
+        folder: Option<PathBuf>,
+        /// Commit message (default: "mdql sync <timestamp>")
+        #[arg(short, long)]
+        message: Option<String>,
+    },
 }
 
 
@@ -198,6 +206,9 @@ fn main() {
                     std::process::exit(1);
                 }
             }
+        }
+        Some(Commands::Sync { folder, message }) => {
+            resolve_folder(folder.as_deref()).and_then(|f| cmd_sync(&f, message.as_deref()))
         }
         Some(Commands::Client { folder, port }) => {
             let db_path = folder
@@ -536,6 +547,86 @@ fn cmd_stamp(folder: &std::path::Path) -> Result<(), MdqlError> {
         modified_count
     );
 
+    Ok(())
+}
+
+fn cmd_sync(folder: &std::path::Path, message: Option<&str>) -> Result<(), MdqlError> {
+    let config = mdql_core::database::load_database_config(folder)?;
+    let sync = config.sync.ok_or_else(|| {
+        MdqlError::General("No 'sync' section in _mdql.md".into())
+    })?;
+
+    let repo_root = find_git_root(folder)?;
+    let repo = repo_root.to_string_lossy();
+
+    let timestamp = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
+    let msg = message.unwrap_or(&timestamp);
+
+    run_cmd("git", &["-C", &repo, "add", "-A"])?;
+
+    let status = std::process::Command::new("git")
+        .args(["-C", &repo, "diff", "--cached", "--quiet"])
+        .status()
+        .map_err(|e| MdqlError::General(format!("git: {}", e)))?;
+
+    if status.success() {
+        println!("Nothing to commit");
+    } else {
+        run_cmd("git", &["-C", &repo, "commit", "-m", msg])?;
+        println!("Committed: {}", msg);
+    }
+
+    run_cmd("git", &["-C", &repo, "push"])?;
+    println!("Pushed to origin");
+
+    let mut ssh_args = vec!["-o", "BatchMode=yes"];
+    let key_flag;
+    if let Some(ref key) = sync.ssh_key {
+        key_flag = format!("{}", key);
+        ssh_args.push("-i");
+        ssh_args.push(&key_flag);
+    }
+    ssh_args.push(&sync.remote_host);
+    let pull_cmd = format!("cd {} && git pull", sync.remote_path);
+    ssh_args.push(&pull_cmd);
+
+    run_cmd("ssh", &ssh_args)?;
+    println!("Pulled on {}", sync.remote_host);
+
+    Ok(())
+}
+
+fn find_git_root(start: &std::path::Path) -> Result<PathBuf, MdqlError> {
+    let mut dir = if start.is_absolute() {
+        start.to_path_buf()
+    } else {
+        std::env::current_dir()?.join(start)
+    };
+    loop {
+        if dir.join(".git").exists() {
+            return Ok(dir);
+        }
+        if !dir.pop() {
+            return Err(MdqlError::General("Not inside a git repository".into()));
+        }
+    }
+}
+
+fn run_cmd(program: &str, args: &[&str]) -> Result<(), MdqlError> {
+    let output = std::process::Command::new(program)
+        .args(args)
+        .stdout(std::process::Stdio::inherit())
+        .stderr(std::process::Stdio::inherit())
+        .output()
+        .map_err(|e| MdqlError::General(format!("{}: {}", program, e)))?;
+
+    if !output.status.success() {
+        return Err(MdqlError::General(format!(
+            "{} failed with exit code {}",
+            program,
+            output.status.code().unwrap_or(-1)
+        )));
+    }
     Ok(())
 }
 
