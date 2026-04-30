@@ -11,7 +11,7 @@ pub use crate::query_ast::*;
 static KEYWORDS: &[&str] = &[
     "SELECT", "FROM", "WHERE", "AND", "OR", "ORDER", "BY",
     "ASC", "DESC", "LIMIT", "LIKE", "IN", "IS", "NOT", "NULL",
-    "JOIN", "ON", "AS", "GROUP", "HAVING",
+    "JOIN", "LEFT", "ON", "AS", "GROUP", "HAVING",
     "INSERT", "INTO", "VALUES", "UPDATE", "SET", "DELETE",
     "ALTER", "TABLE", "RENAME", "FIELD", "TO", "DROP", "MERGE", "FIELDS",
     "CASE", "WHEN", "THEN", "ELSE", "END",
@@ -204,7 +204,15 @@ impl Parser {
 
         // Optional JOIN(s)
         let mut joins = Vec::new();
-        while self.match_keyword("JOIN") {
+        loop {
+            let jt = if self.match_keyword("LEFT") {
+                self.expect("keyword", Some("JOIN"))?;
+                JoinType::Left
+            } else if self.match_keyword("JOIN") {
+                JoinType::Inner
+            } else {
+                break;
+            };
             let join_table = self.parse_ident()?;
             let mut join_alias = None;
             if let Some(t) = self.peek() {
@@ -217,6 +225,7 @@ impl Parser {
             self.expect("op", Some("="))?;
             let right_col = self.parse_ident()?;
             joins.push(JoinClause {
+                join_type: jt,
                 table: join_table,
                 alias: join_alias,
                 left_col,
@@ -980,7 +989,7 @@ impl Parser {
 
     fn is_clause_keyword(&self, t: &Token) -> bool {
         t.token_type == "keyword"
-            && ["WHERE", "ORDER", "LIMIT", "JOIN", "ON", "GROUP"].contains(&t.value.as_str())
+            && ["WHERE", "ORDER", "LIMIT", "JOIN", "LEFT", "ON", "GROUP"].contains(&t.value.as_str())
     }
 
     /// Keywords that should never be consumed as column names inside expressions.
@@ -1258,6 +1267,36 @@ mod tests {
             assert_eq!(q.joins[1].alias, Some("c".into()));
             assert_eq!(q.joins[1].left_col, "c.strategy");
             assert_eq!(q.joins[1].right_col, "s.path");
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_left_join() {
+        let stmt = parse_query(
+            "SELECT s.title, b.sharpe FROM strategies s LEFT JOIN backtests b ON b.strategy = s.path",
+        )
+        .unwrap();
+        if let Statement::Select(q) = stmt {
+            assert_eq!(q.joins.len(), 1);
+            assert_eq!(q.joins[0].join_type, JoinType::Left);
+            assert_eq!(q.joins[0].table, "backtests");
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_mixed_join_types() {
+        let stmt = parse_query(
+            "SELECT s.title FROM strategies s JOIN backtests b ON b.strategy = s.path LEFT JOIN allocations a ON a.strategy = s.path",
+        )
+        .unwrap();
+        if let Statement::Select(q) = stmt {
+            assert_eq!(q.joins.len(), 2);
+            assert_eq!(q.joins[0].join_type, JoinType::Inner);
+            assert_eq!(q.joins[1].join_type, JoinType::Left);
         } else {
             panic!("Expected Select");
         }

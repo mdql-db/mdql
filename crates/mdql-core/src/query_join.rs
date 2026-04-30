@@ -72,19 +72,30 @@ pub fn execute_join_query(
             }
         }
 
+        let right_columns: Vec<String> = right_rows
+            .first()
+            .map(|r| r.keys().cloned().collect())
+            .unwrap_or_default();
+
         let mut next_rows: Vec<Row> = Vec::new();
         for lr in &current_rows {
-            if let Some(key) = lr.get(&left_key) {
-                let key_str = key.to_display_string();
-                if let Some(matching) = right_index.get(&key_str) {
-                    for rr in matching {
-                        let mut merged = lr.clone();
-                        for (k, v) in *rr {
-                            merged.insert(format!("{}.{}", right_alias, k), v.clone());
-                        }
-                        next_rows.push(merged);
+            let key_str = lr.get(&left_key).map(|v| v.to_display_string());
+            let matching = key_str.as_deref().and_then(|k| right_index.get(k));
+
+            if let Some(rows) = matching {
+                for rr in rows {
+                    let mut merged = lr.clone();
+                    for (k, v) in *rr {
+                        merged.insert(format!("{}.{}", right_alias, k), v.clone());
                     }
+                    next_rows.push(merged);
                 }
+            } else if join.join_type == JoinType::Left {
+                let mut merged = lr.clone();
+                for col in &right_columns {
+                    merged.insert(format!("{}.{}", right_alias, col), Value::Null);
+                }
+                next_rows.push(merged);
             }
         }
         current_rows = next_rows;

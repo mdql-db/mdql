@@ -143,7 +143,14 @@ pub enum SqlValue {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum JoinType {
+    Inner,
+    Left,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct JoinClause {
+    pub join_type: JoinType,
     pub table: String,
     pub alias: Option<String>,
     pub left_col: String,

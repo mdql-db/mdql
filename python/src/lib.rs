@@ -259,6 +259,8 @@ impl PyOrderSpec {
 #[derive(Clone)]
 struct PyJoinInfo {
     #[pyo3(get)]
+    join_type: String,
+    #[pyo3(get)]
     table: String,
     #[pyo3(get)]
     alias: Option<String>,
@@ -482,6 +484,10 @@ fn select_query_to_py(py: Python<'_>, q: &qp::SelectQuery) -> PyResult<PyObject>
     });
 
     let joins: Vec<PyJoinInfo> = q.joins.iter().map(|j| PyJoinInfo {
+        join_type: match j.join_type {
+            qp::JoinType::Inner => "JOIN".to_string(),
+            qp::JoinType::Left => "LEFT JOIN".to_string(),
+        },
         table: j.table.clone(),
         alias: j.alias.clone(),
         left_col: j.left_col.clone(),

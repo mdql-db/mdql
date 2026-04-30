@@ -187,6 +187,7 @@ fn extract_view_query(sql: &str) -> crate::errors::Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::Value;
     use std::fs;
 
     fn make_test_db() -> tempfile::TempDir {
@@ -387,5 +388,87 @@ mod tests {
         let q = extract_view_query("CREATE VIEW v AS\tSELECT * FROM t").unwrap();
         assert!(q.starts_with("SELECT"));
         assert!(q.contains("FROM t"));
+    }
+
+    fn make_join_db() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join("_mdql.md"),
+            "---\ntype: database\nname: testdb\n---\n",
+        )
+        .unwrap();
+
+        let strats = dir.path().join("strategies");
+        fs::create_dir(&strats).unwrap();
+        fs::write(
+            strats.join("_mdql.md"),
+            "---\ntype: schema\ntable: strategies\nprimary_key: path\nfrontmatter:\n  title:\n    type: string\n---\n",
+        )
+        .unwrap();
+        fs::write(strats.join("alpha.md"), "---\ntitle: Alpha\n---\n# Alpha\n").unwrap();
+        fs::write(strats.join("beta.md"), "---\ntitle: Beta\n---\n# Beta\n").unwrap();
+        fs::write(strats.join("gamma.md"), "---\ntitle: Gamma\n---\n# Gamma\n").unwrap();
+
+        let bt = dir.path().join("backtests");
+        fs::create_dir(&bt).unwrap();
+        fs::write(
+            bt.join("_mdql.md"),
+            "---\ntype: schema\ntable: backtests\nprimary_key: path\nfrontmatter:\n  strategy:\n    type: string\n  sharpe:\n    type: float\n---\n",
+        )
+        .unwrap();
+        fs::write(bt.join("bt-alpha.md"), "---\nstrategy: alpha.md\nsharpe: 1.5\n---\n# BT Alpha\n").unwrap();
+
+        dir
+    }
+
+    #[test]
+    fn test_inner_join() {
+        let dir = make_join_db();
+        let (result, _) = execute(
+            dir.path(),
+            "SELECT s.title, b.sharpe FROM strategies s JOIN backtests b ON b.strategy = s.path",
+        )
+        .unwrap();
+        if let QueryResult::Rows { rows, .. } = result {
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0].get("s.title").unwrap(), &Value::String("Alpha".into()));
+        } else {
+            panic!("Expected Rows");
+        }
+    }
+
+    #[test]
+    fn test_left_join() {
+        let dir = make_join_db();
+        let (result, _) = execute(
+            dir.path(),
+            "SELECT s.title, b.sharpe FROM strategies s LEFT JOIN backtests b ON b.strategy = s.path",
+        )
+        .unwrap();
+        if let QueryResult::Rows { rows, .. } = result {
+            assert_eq!(rows.len(), 3);
+            let alpha = rows.iter().find(|r| r.get("s.title") == Some(&Value::String("Alpha".into()))).unwrap();
+            assert_eq!(alpha.get("b.sharpe"), Some(&Value::Float(1.5)));
+            let beta = rows.iter().find(|r| r.get("s.title") == Some(&Value::String("Beta".into()))).unwrap();
+            assert_eq!(beta.get("b.sharpe"), Some(&Value::Null));
+        } else {
+            panic!("Expected Rows");
+        }
+    }
+
+    #[test]
+    fn test_left_join_in_view() {
+        let dir = make_join_db();
+        execute(
+            dir.path(),
+            "CREATE VIEW overview AS SELECT s.title, b.sharpe FROM strategies s LEFT JOIN backtests b ON b.strategy = s.path",
+        )
+        .unwrap();
+        let (result, _) = execute(dir.path(), "SELECT * FROM overview").unwrap();
+        if let QueryResult::Rows { rows, .. } = result {
+            assert_eq!(rows.len(), 3);
+        } else {
+            panic!("Expected Rows");
+        }
     }
 }
