@@ -264,7 +264,7 @@ strategies = db.table("strategies")
 
 ### SELECT with JOINs
 
-`Database.query()` runs SQL across all tables in the database, including multi-table JOINs.
+`Database.query()` runs SQL across all tables in the database, including INNER JOIN and LEFT JOIN.
 
 ```python
 rows, columns = db.query(
@@ -272,8 +272,13 @@ rows, columns = db.query(
     "FROM strategies s "
     "JOIN backtests b ON b.strategy = s.path"
 )
-# rows: list of dicts, one per result row
-# columns: list of column names
+
+# LEFT JOIN keeps all left rows, fills NULLs for unmatched
+rows, columns = db.query(
+    "SELECT s.title, b.sharpe "
+    "FROM strategies s "
+    "LEFT JOIN backtests b ON b.strategy = s.path"
+)
 ```
 
 ### Single-table queries
@@ -536,7 +541,7 @@ mdql query examples/strategies/ \
 
 ### JOINs
 
-Point at the database directory (parent of table folders) for cross-table queries. Supports two or more tables:
+Point at the database directory (parent of table folders) for cross-table queries. Supports INNER JOIN and LEFT JOIN with two or more tables:
 
 ```bash
 # Two-table JOIN
@@ -545,12 +550,18 @@ mdql query examples/ \
    FROM strategies s
    JOIN backtests b ON b.strategy = s.path"
 
-# Multi-table JOIN
+# LEFT JOIN — keeps all left rows, fills NULLs for unmatched right rows
+mdql query examples/ \
+  "SELECT s.title, b.sharpe
+   FROM strategies s
+   LEFT JOIN backtests b ON b.strategy = s.path"
+
+# Multi-table JOIN (mix INNER and LEFT)
 mdql query my-db/ \
   "SELECT s.title, b.result, c.verdict
    FROM strategies s
    JOIN backtests b ON b.strategy = s.path
-   JOIN critiques c ON c.strategy = s.path"
+   LEFT JOIN critiques c ON c.strategy = s.path"
 ```
 
 ### SQL write operations
@@ -706,6 +717,29 @@ mdql client examples/
 The web server exposes a REST API:
 - `POST /api/query` — execute SQL
 - `GET /api/fk-errors` — current foreign key violations (updated by background watcher)
+
+### `mdql checksums <folder>`
+
+Generate or verify sidecar checksums for tamper detection. Each table gets a `_checksums.json` file tracking xxHash64 of every row file.
+
+```bash
+# Generate checksums from current file state
+mdql checksums examples/strategies/ --regenerate
+
+# Verify files against stored checksums
+mdql checksums examples/strategies/ --verify
+```
+
+When checksums exist, MDQL automatically updates them on insert/update/delete. On load, files that don't match their checksum are flagged with `_modified_externally: true` in the row data.
+
+```python
+from mdql.migrate import regenerate_checksums
+
+regenerate_checksums("examples/strategies/")
+
+rows, errors = strategies.load()
+modified = [r for r in rows if r.get("_modified_externally")]
+```
 
 ## Multi-agent setup
 
