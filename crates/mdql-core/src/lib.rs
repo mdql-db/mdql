@@ -10,7 +10,7 @@ pub mod query_parser;
 pub mod query_engine;
 pub(crate) mod query_join;
 pub mod projector;
-pub mod migrate;
+pub(crate) mod migrate;
 pub mod stamp;
 pub mod txn;
 pub mod api;

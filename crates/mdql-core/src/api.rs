@@ -10,6 +10,12 @@ use crate::database::{DatabaseConfig, load_database_config};
 use crate::errors::{MdqlError, ValidationError};
 use crate::migrate;
 use crate::model::{Row, Value};
+
+pub use crate::migrate::{
+    rename_frontmatter_key_in_file, drop_frontmatter_key_in_file,
+    rename_section_in_file, drop_section_in_file,
+    merge_sections_in_file, update_schema,
+};
 use crate::parser::parse_file;
 use crate::query_engine::{evaluate, sql_value_to_value};
 use crate::query_parser::*;

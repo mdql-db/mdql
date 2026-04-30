@@ -1190,7 +1190,7 @@ fn recover_journal(folder: &str) -> PyResult<bool> {
 /// Migrate: rename frontmatter key in file.
 #[pyfunction]
 fn rename_frontmatter_key_in_file(path: &str, old_key: &str, new_key: &str) -> PyResult<bool> {
-    mdql_core::migrate::rename_frontmatter_key_in_file(
+    mdql_core::api::rename_frontmatter_key_in_file(
         std::path::Path::new(path), old_key, new_key,
     )
     .map_err(mdql_to_py_err)
@@ -1198,13 +1198,13 @@ fn rename_frontmatter_key_in_file(path: &str, old_key: &str, new_key: &str) -> P
 
 #[pyfunction]
 fn drop_frontmatter_key_in_file(path: &str, key: &str) -> PyResult<bool> {
-    mdql_core::migrate::drop_frontmatter_key_in_file(std::path::Path::new(path), key)
+    mdql_core::api::drop_frontmatter_key_in_file(std::path::Path::new(path), key)
         .map_err(mdql_to_py_err)
 }
 
 #[pyfunction]
 fn rename_section_in_file(path: &str, old_name: &str, new_name: &str, normalize: bool) -> PyResult<bool> {
-    mdql_core::migrate::rename_section_in_file(
+    mdql_core::api::rename_section_in_file(
         std::path::Path::new(path), old_name, new_name, normalize,
     )
     .map_err(mdql_to_py_err)
@@ -1212,13 +1212,13 @@ fn rename_section_in_file(path: &str, old_name: &str, new_name: &str, normalize:
 
 #[pyfunction]
 fn drop_section_in_file(path: &str, name: &str, normalize: bool) -> PyResult<bool> {
-    mdql_core::migrate::drop_section_in_file(std::path::Path::new(path), name, normalize)
+    mdql_core::api::drop_section_in_file(std::path::Path::new(path), name, normalize)
         .map_err(mdql_to_py_err)
 }
 
 #[pyfunction]
 fn merge_sections_in_file(path: &str, sources: Vec<String>, into: &str, normalize: bool) -> PyResult<bool> {
-    mdql_core::migrate::merge_sections_in_file(
+    mdql_core::api::merge_sections_in_file(
         std::path::Path::new(path), &sources, into, normalize,
     )
     .map_err(mdql_to_py_err)
@@ -1256,7 +1256,7 @@ fn update_schema(
         (Some(sources), Some(into)) => Some((sources.as_slice(), into)),
         _ => None,
     };
-    mdql_core::migrate::update_schema(
+    mdql_core::api::update_schema(
         std::path::Path::new(schema_path),
         rename_fm, drop_fm, rename_sec, drop_sec, merge,
     )
