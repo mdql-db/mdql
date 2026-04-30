@@ -234,7 +234,7 @@ pub fn load_database_config(db_dir: &Path) -> crate::errors::Result<DatabaseConf
     })
 }
 
-pub fn save_database_config(db_dir: &Path, config: &DatabaseConfig) -> crate::errors::Result<()> {
+pub(crate) fn save_database_config(db_dir: &Path, config: &DatabaseConfig) -> crate::errors::Result<()> {
     let db_path = db_dir.join(MDQL_FILENAME);
     let text = std::fs::read_to_string(&db_path)?;
 

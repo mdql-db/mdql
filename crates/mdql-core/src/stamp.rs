@@ -6,7 +6,7 @@ use chrono::NaiveDateTime;
 
 use crate::txn::atomic_write;
 
-pub const TIMESTAMP_FIELDS: &[&str] = &["created", "modified"];
+pub(crate) const TIMESTAMP_FIELDS: &[&str] = &["created", "modified"];
 
 pub fn stamp_file(
     path: &Path,

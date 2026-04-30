@@ -397,7 +397,7 @@ fn yaml_value_to_string(value: &serde_yaml::Value) -> String {
 }
 
 /// Validate all foreign key constraints across a loaded database.
-pub fn validate_foreign_keys(
+pub(crate) fn validate_foreign_keys(
     db_config: &DatabaseConfig,
     tables: &HashMap<String, (Schema, Vec<Row>)>,
 ) -> Vec<ValidationError> {

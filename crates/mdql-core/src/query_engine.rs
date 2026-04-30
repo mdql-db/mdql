@@ -427,7 +427,7 @@ pub fn evaluate(clause: &WhereClause, row: &Row) -> bool {
 }
 
 /// Evaluate an Expr against a row, returning a Value.
-pub fn evaluate_expr(expr: &Expr, row: &Row) -> Value {
+pub(crate) fn evaluate_expr(expr: &Expr, row: &Row) -> Value {
     match expr {
         Expr::Literal(SqlValue::Int(n)) => Value::Int(*n),
         Expr::Literal(SqlValue::Float(f)) => Value::Float(*f),
@@ -970,7 +970,7 @@ fn sort_rows(rows: &mut Vec<Row>, specs: &[OrderSpec]) {
 }
 
 /// Convert a SqlValue to our model Value (for use in insert/update).
-pub fn sql_value_to_value(sql_val: &SqlValue) -> Value {
+pub(crate) fn sql_value_to_value(sql_val: &SqlValue) -> Value {
     match sql_val {
         SqlValue::Null => Value::Null,
         SqlValue::String(s) => Value::String(s.clone()),

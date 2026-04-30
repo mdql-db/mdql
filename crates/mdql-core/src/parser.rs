@@ -63,7 +63,7 @@ pub fn parse_file(
 }
 
 /// Parse markdown text directly (useful for testing and when content is already in memory).
-pub fn parse_text(text: &str, rel_path: &str, normalize_numbered: bool) -> ParsedFile {
+pub(crate) fn parse_text(text: &str, rel_path: &str, normalize_numbered: bool) -> ParsedFile {
     let lines: Vec<&str> = text.split('\n').collect();
     let mut raw_frontmatter = serde_yaml::Value::Mapping(serde_yaml::Mapping::new());
     let mut body_start: usize = 0;
