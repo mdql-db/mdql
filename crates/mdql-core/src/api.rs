@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use regex::Regex;
 use std::sync::LazyLock;
 
+use crate::checksums;
 use crate::database::{DatabaseConfig, load_database_config};
 use crate::errors::{MdqlError, ValidationError};
 use crate::migrate;
@@ -69,6 +70,12 @@ fn write_and_validate(
         }
         let msgs: Vec<String> = errors.iter().map(|e| e.message.clone()).collect();
         return Err(MdqlError::General(format!("Validation failed: {}", msgs.join("; "))));
+    }
+
+    if checksums::load_checksums(table_path).is_some() {
+        if let Some(fname) = filepath.file_name().and_then(|f| f.to_str()) {
+            checksums::update_checksum(table_path, fname, content.as_bytes())?;
+        }
     }
 
     Ok(())
@@ -479,6 +486,7 @@ impl Table {
         }
 
         std::fs::remove_file(&filepath)?;
+        checksums::remove_checksum(&self.path, &fname)?;
         self.cache.lock().unwrap().invalidate_all();
         Ok(filepath)
     }

@@ -1270,6 +1270,12 @@ fn slugify(text: &str, max_length: Option<usize>) -> String {
     mdql_core::api::slugify(text, max)
 }
 
+#[pyfunction]
+fn regenerate_checksums(table_dir: &str) -> PyResult<usize> {
+    mdql_core::checksums::regenerate_checksums(std::path::Path::new(table_dir))
+        .map_err(mdql_to_py_err)
+}
+
 // ── Module ───────────────────────────────────────────────────────────────
 
 #[pymodule]
@@ -1313,6 +1319,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(merge_sections_in_file, m)?)?;
     m.add_function(wrap_pyfunction!(update_schema, m)?)?;
     m.add_function(wrap_pyfunction!(slugify, m)?)?;
+    m.add_function(wrap_pyfunction!(regenerate_checksums, m)?)?;
 
     Ok(())
 }

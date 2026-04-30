@@ -104,11 +104,30 @@ fn load_md_files(
         })
         .collect();
 
+    let checksums = crate::checksums::load_checksums(folder);
+
     let mut rows = Vec::new();
     let mut all_errors = Vec::new();
     for (row_opt, errors) in results {
         all_errors.extend(errors);
-        if let Some((rel, row, mtime)) = row_opt {
+        if let Some((rel, mut row, mtime)) = row_opt {
+            if let Some(ref cs) = checksums {
+                let matches = cs.files.get(&rel).map(|expected| {
+                    let file_path = folder.join(&rel);
+                    std::fs::read(&file_path)
+                        .map(|content| crate::checksums::hash_content(&content) == *expected)
+                        .unwrap_or(false)
+                });
+                match matches {
+                    Some(true) => {}
+                    Some(false) | None => {
+                        row.insert(
+                            "_modified_externally".to_string(),
+                            crate::model::Value::Bool(true),
+                        );
+                    }
+                }
+            }
             if let Some(ref mut c) = cache {
                 if let Some(mt) = mtime {
                     c.put(rel, mt, row.clone());

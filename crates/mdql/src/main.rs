@@ -113,6 +113,17 @@ enum Commands {
         #[arg(short, long)]
         message: Option<String>,
     },
+    /// Generate or verify checksums for tamper detection
+    Checksums {
+        /// Path to table folder
+        folder: PathBuf,
+        /// Regenerate checksums from current file state
+        #[arg(long)]
+        regenerate: bool,
+        /// Verify files against existing checksums
+        #[arg(long)]
+        verify: bool,
+    },
 }
 
 
@@ -209,6 +220,9 @@ fn main() {
         }
         Some(Commands::Sync { folder, message }) => {
             resolve_folder(folder.as_deref()).and_then(|f| cmd_sync(&f, message.as_deref()))
+        }
+        Some(Commands::Checksums { folder, regenerate, verify }) => {
+            cmd_checksums(&folder, regenerate, verify)
         }
         Some(Commands::Client { folder, port }) => {
             let db_path = folder
@@ -548,6 +562,57 @@ fn cmd_stamp(folder: &std::path::Path) -> Result<(), MdqlError> {
     );
 
     Ok(())
+}
+
+fn cmd_checksums(folder: &std::path::Path, regenerate: bool, verify: bool) -> Result<(), MdqlError> {
+    if regenerate {
+        let count = mdql_core::checksums::regenerate_checksums(folder)?;
+        println!("Regenerated checksums for {} files", count);
+        return Ok(());
+    }
+
+    if verify {
+        let checksums = mdql_core::checksums::load_checksums(folder).ok_or_else(|| {
+            MdqlError::General("No _checksums.json found. Run with --regenerate first.".into())
+        })?;
+
+        let mut modified = Vec::new();
+        let mut missing = Vec::new();
+
+        for (filename, expected) in &checksums.files {
+            let file_path = folder.join(filename);
+            if !file_path.exists() {
+                missing.push(filename.clone());
+                continue;
+            }
+            let content = std::fs::read(&file_path)?;
+            let actual = mdql_core::checksums::hash_content(&content);
+            if actual != *expected {
+                modified.push(filename.clone());
+            }
+        }
+
+        if modified.is_empty() && missing.is_empty() {
+            println!("All {} files match checksums", checksums.files.len());
+        } else {
+            if !modified.is_empty() {
+                println!("Modified externally ({}):", modified.len());
+                for f in &modified {
+                    println!("  {}", f);
+                }
+            }
+            if !missing.is_empty() {
+                println!("Missing ({}):", missing.len());
+                for f in &missing {
+                    println!("  {}", f);
+                }
+            }
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
+
+    Err(MdqlError::General("Specify --regenerate or --verify".into()))
 }
 
 fn cmd_sync(folder: &std::path::Path, message: Option<&str>) -> Result<(), MdqlError> {

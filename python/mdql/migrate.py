@@ -11,6 +11,7 @@ from mdql._native import (
     drop_section_in_file as _rust_drop_sec,
     merge_sections_in_file as _rust_merge_secs,
     update_schema as _rust_update_schema,
+    regenerate_checksums as _rust_regenerate_checksums,
 )
 
 
@@ -57,3 +58,7 @@ def update_schema(
         merge_sources=merge_sections[0] if merge_sections else None,
         merge_into=merge_sections[1] if merge_sections else None,
     )
+
+
+def regenerate_checksums(table_dir: str | Path) -> int:
+    return _rust_regenerate_checksums(str(table_dir))
