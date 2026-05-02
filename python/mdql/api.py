@@ -171,5 +171,17 @@ class Database:
         except (ValueError, RuntimeError) as e:
             raise MdqlError(str(e)) from None
 
+    def rename(self, table_name: str, old_filename: str, new_filename: str) -> str:
+        try:
+            return self._rust.rename(table_name, old_filename, new_filename)
+        except RuntimeError as e:
+            raise MdqlError(str(e)) from None
+
+    def rename_table(self, old_name: str, new_name: str) -> str:
+        try:
+            return self._rust.rename_table(old_name, new_name)
+        except RuntimeError as e:
+            raise MdqlError(str(e)) from None
+
     def __repr__(self) -> str:
         return f"Database({str(self.path)!r})"

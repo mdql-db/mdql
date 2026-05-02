@@ -1004,6 +1004,66 @@ impl Database {
             )))
         }
     }
+
+    pub fn rename_table(&mut self, old_name: &str, new_name: &str) -> crate::errors::Result<String> {
+        if !self.tables.contains_key(old_name) {
+            return Err(MdqlError::General(format!("Table '{}' not found", old_name)));
+        }
+        if self.tables.contains_key(new_name) {
+            return Err(MdqlError::General(format!("Table '{}' already exists", new_name)));
+        }
+
+        let old_dir = self.path.join(old_name);
+        let new_dir = self.path.join(new_name);
+
+        // Update the schema table name
+        let schema_path = old_dir.join(MDQL_FILENAME);
+        let schema_text = std::fs::read_to_string(&schema_path)?;
+        let updated_schema = schema_text.replacen(
+            &format!("table: {}", old_name),
+            &format!("table: {}", new_name),
+            1,
+        );
+        atomic_write(&schema_path, &updated_schema)?;
+
+        // Rename the directory
+        std::fs::rename(&old_dir, &new_dir)?;
+
+        // Update foreign keys in database config that reference this table
+        let db_config_path = self.path.join(MDQL_FILENAME);
+        if db_config_path.exists() {
+            let config_text = std::fs::read_to_string(&db_config_path)?;
+            if config_text.contains(old_name) {
+                let mut updated_config = config_text.clone();
+                for fk in &self.config.foreign_keys {
+                    if fk.from_table == old_name {
+                        updated_config = updated_config.replace(
+                            &format!("from: {}.{}", old_name, fk.from_column),
+                            &format!("from: {}.{}", new_name, fk.from_column),
+                        );
+                    }
+                    if fk.to_table == old_name {
+                        updated_config = updated_config.replace(
+                            &format!("to: {}.{}", old_name, fk.to_column),
+                            &format!("to: {}.{}", new_name, fk.to_column),
+                        );
+                    }
+                }
+                atomic_write(&db_config_path, &updated_config)?;
+            }
+        }
+
+        // Reload the table under the new name
+        if let Some(_) = self.tables.remove(old_name) {
+            let new_table = Table::new(&new_dir)?;
+            self.tables.insert(new_name.to_string(), new_table);
+        }
+
+        // Reload config
+        self.config = load_database_config(&self.path)?;
+
+        Ok(format!("RENAME TABLE {} → {}", old_name, new_name))
+    }
 }
 
 #[cfg(test)]

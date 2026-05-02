@@ -788,6 +788,18 @@ impl PyDatabase {
         ))
     }
 
+    fn rename(&self, table_name: &str, old_filename: &str, new_filename: &str) -> PyResult<String> {
+        self.inner
+            .rename(table_name, old_filename, new_filename)
+            .map_err(mdql_to_py_err)
+    }
+
+    fn rename_table(&mut self, old_name: &str, new_name: &str) -> PyResult<String> {
+        self.inner
+            .rename_table(old_name, new_name)
+            .map_err(mdql_to_py_err)
+    }
+
     /// Execute a DDL statement (CREATE VIEW, DROP VIEW) against the database.
     fn execute(&mut self, sql: &str) -> PyResult<String> {
         let (result, _errors) = mdql_core::executor::execute(&self.inner.path, sql)
