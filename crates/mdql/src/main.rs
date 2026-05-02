@@ -97,6 +97,15 @@ enum Commands {
         /// New filename (e.g., "new-name.md")
         new_name: String,
     },
+    /// Rename a table directory and update schema + foreign key config
+    RenameTable {
+        /// Path to database folder
+        folder: PathBuf,
+        /// Current table name
+        old_name: String,
+        /// New table name
+        new_name: String,
+    },
     /// Open browser UI for running queries
     Client {
         /// Path to table or database folder
@@ -205,6 +214,11 @@ fn main() {
             old_name,
             new_name,
         }) => cmd_rename(&folder, &table, &old_name, &new_name),
+        Some(Commands::RenameTable {
+            folder,
+            old_name,
+            new_name,
+        }) => cmd_rename_table(&folder, &old_name, &new_name),
         Some(Commands::Repl { folder }) => {
             let db_path = folder
                 .as_ref()
@@ -527,6 +541,17 @@ fn cmd_rename(
 ) -> Result<(), MdqlError> {
     let db = mdql_core::api::Database::new(folder)?;
     let msg = db.rename(table, old_name, new_name)?;
+    println!("{}", msg);
+    Ok(())
+}
+
+fn cmd_rename_table(
+    folder: &std::path::Path,
+    old_name: &str,
+    new_name: &str,
+) -> Result<(), MdqlError> {
+    let mut db = mdql_core::api::Database::new(folder)?;
+    let msg = db.rename_table(old_name, new_name)?;
     println!("{}", msg);
     Ok(())
 }

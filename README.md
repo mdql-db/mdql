@@ -386,6 +386,16 @@ updated_paths = strategies.update_many(
 strategies.delete("my-new-strategy.md")
 ```
 
+### Rename
+
+```python
+# Rename an entry — cascades FK references in other tables
+db.rename("strategies", "old-name.md", "new-name.md")
+
+# Rename a table — updates schema + FK config
+db.rename_table("strategies", "strats")
+```
+
 ### Schema operations
 
 ```python
@@ -609,6 +619,15 @@ Rename a file within a table. Automatically updates all foreign key references i
 mdql rename examples/ strategies bad-debt-socialization-event-token-short.md bad-debt-token-short.md
 # Renamed strategies/bad-debt-socialization-event-token-short.md → bad-debt-token-short.md
 # Updated 3 references in backtests
+```
+
+### `mdql rename-table <db-folder> <old-name> <new-name>`
+
+Rename a table directory. Updates the schema `table:` field and all foreign key references in the database config.
+
+```bash
+mdql rename-table examples/ strategies strats
+# RENAME TABLE strategies → strats
 ```
 
 ### `mdql create <folder> --set key=value`
