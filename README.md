@@ -428,6 +428,15 @@ All writes are validated against the schema and rolled back on failure. The `cre
 
 ## CLI commands
 
+### `mdql --version`
+
+Print the installed version.
+
+```bash
+mdql --version
+# mdql 0.5.25
+```
+
 ### `mdql query <folder> "<sql>"`
 
 Run SQL against a table or database. Supports `SELECT`, `INSERT INTO`, `UPDATE SET`, `DELETE FROM`, `ALTER TABLE`, `JOIN`, `CREATE VIEW`, and `DROP VIEW`.

@@ -14,7 +14,7 @@ use mdql_core::projector::format_results;
 use mdql_core::schema::{MDQL_FILENAME, load_schema};
 
 #[derive(Parser)]
-#[command(name = "mdql", about = "A strict Markdown database with SQL-like queries")]
+#[command(name = "mdql", about = "A strict Markdown database with SQL-like queries", version)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
