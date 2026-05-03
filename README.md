@@ -142,7 +142,16 @@ Documentation about this table goes here.
 
 Supported types: `string`, `int`, `float`, `bool`, `date`, `datetime`, `string[]`, `dict`
 
-The `dict` type stores a flat YAML mapping with scalar values. Use dot-access in queries: `SELECT params.entry_days FROM strategies`.
+The `dict` type stores a YAML mapping. Values can be scalars, lists, or nested dicts. Use dot-access in queries: `SELECT params.entry_days FROM strategies`.
+
+```yaml
+params:
+  threshold: 0.5
+  blocked_tokens:
+    - ZK
+    - W
+  enabled: true
+```
 
 ### Database config (`type: database`)
 
