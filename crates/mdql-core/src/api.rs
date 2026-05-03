@@ -211,16 +211,10 @@ fn serialize_body(data: &HashMap<String, Value>, schema: &Schema) -> String {
     let mut body = String::new();
 
     if schema.h1_required {
-        let h1_text = if let Some(ref field) = schema.h1_must_equal_frontmatter {
-            data.get(field)
-                .map(|v| v.to_display_string())
-                .unwrap_or_default()
-        } else {
-            data.get("h1")
-                .or_else(|| data.get("title"))
-                .map(|v| v.to_display_string())
-                .unwrap_or_default()
-        };
+        let h1_text = data.get("h1")
+            .or_else(|| data.get("title"))
+            .map(|v| v.to_display_string())
+            .unwrap_or_default();
         body.push_str(&format!("\n# {}\n", h1_text));
     }
 

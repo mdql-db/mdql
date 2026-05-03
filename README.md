@@ -95,8 +95,10 @@ its reserve buffer, the smart contract mints governance tokens...
 The protocol's shortfall module triggers an auction...
 ```
 
-- YAML frontmatter fields are metadata columns (`title`, `status`, `mechanism`, ...)
-- H2 sections are content columns (`Hypothesis`, `Structural Mechanism`, ...)
+- **Frontmatter** = metadata columns (`title`, `status`, `mechanism`, ...) — typed, validated, queryable
+- **H2 sections** = content columns (`Hypothesis`, `Structural Mechanism`, ...) — queryable long-form text
+- **H1** = decorative only. Not queryable, not stored as a column. Present for human readability in editors and GitHub rendering (standard markdown convention: one H1 per document as the title)
+- **Loose body** (text not under any H2) = rejected. All content must live under an `## Heading` to be queryable. This prevents silent data loss.
 - The `path` (filename) is the implicit primary key
 - `created` and `modified` are reserved datetime fields (ISO 8601, e.g. `"2026-04-03T14:22:01"`), auto-managed by `mdql stamp`
 - All columns are queryable with SQL
@@ -673,10 +675,10 @@ Invalid files get clear error messages:
 missing-field.md: Missing required frontmatter field 'count'
 wrong-type-date.md: Field 'created' expected datetime (ISO 8601), got string 'yesterday'
 duplicate-section.md: Duplicate section 'Body' (appears 2 times)
-loose-note.md: Body content present but no H2 sections; body is not queryable
+loose-note.md: Body content not under an H2 section is not allowed; wrap in ## heading
 ```
 
-Files with body content but no H2 headings produce a warning (the row is still loaded, but the body text is not accessible via queries). Add `## Heading` sections to make body content queryable.
+Files with body content not under an H2 heading are rejected (the row is excluded from query results). All prose must be wrapped in `## Heading` sections to be queryable. This prevents silent data loss where text exists on disk but is invisible to MDQL queries.
 
 When pointed at a database directory, also reports foreign key violations (see [Foreign key validation](#foreign-key-validation)).
 

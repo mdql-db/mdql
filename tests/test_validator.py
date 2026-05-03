@@ -65,12 +65,6 @@ class TestStrictTable:
         types = [e.error_type for e in errors]
         assert "missing_h1" in types
 
-    def test_mismatched_h1(self, schema):
-        p = parse_file(FIXTURES / "strict_table" / "mismatched-h1.md", relative_to=FIXTURES / "strict_table")
-        errors = validate_file(p, schema)
-        types = [e.error_type for e in errors]
-        assert "h1_mismatch" in types
-
     def test_unknown_section_rejected(self, schema):
         p = parse_file(FIXTURES / "strict_table" / "unknown-section.md", relative_to=FIXTURES / "strict_table")
         errors = validate_file(p, schema)

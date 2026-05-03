@@ -134,27 +134,6 @@ pub fn validate_file(parsed: &ParsedFile, schema: &Schema) -> Vec<ValidationErro
         });
     }
 
-    if let Some(ref h1_field) = schema.h1_must_equal_frontmatter {
-        if let Some(ref h1) = parsed.h1 {
-            let key = serde_yaml::Value::String(h1_field.clone());
-            if let Some(expected_val) = fm_map.get(&key) {
-                let expected = yaml_value_to_string(expected_val);
-                if h1 != &expected {
-                    errors.push(ValidationError {
-                        file_path: fp.clone(),
-                        error_type: ValidationErrorKind::H1Mismatch,
-                        field: None,
-                        message: format!(
-                            "H1 '{}' does not match frontmatter '{}' (expected '{}')",
-                            h1, h1_field, expected
-                        ),
-                        line_number: parsed.h1_line_number,
-                    });
-                }
-            }
-        }
-    }
-
     // --- Section checks ---
     let section_names: Vec<&str> = parsed
         .sections
@@ -217,13 +196,13 @@ pub fn validate_file(parsed: &ParsedFile, schema: &Schema) -> Vec<ValidationErro
         }
     }
 
-    // Loose body warning
-    if parsed.has_loose_body && parsed.sections.is_empty() {
+    // Loose body is a hard error — all content must be under H2 sections
+    if parsed.has_loose_body {
         errors.push(ValidationError {
             file_path: fp.clone(),
             error_type: ValidationErrorKind::LooseBody,
             field: None,
-            message: "Body content present but no H2 sections; body is not queryable".to_string(),
+            message: "Body content not under an H2 section is not allowed; wrap in ## heading".to_string(),
             line_number: None,
         });
     }
@@ -523,7 +502,6 @@ mod tests {
             primary_key: "path".to_string(),
             frontmatter,
             h1_required: false,
-            h1_must_equal_frontmatter: None,
             sections,
             rules: Rules {
                 reject_unknown_frontmatter: true,
@@ -600,7 +578,6 @@ mod tests {
             primary_key: "path".to_string(),
             frontmatter: IndexMap::new(),
             h1_required: false,
-            h1_must_equal_frontmatter: None,
             sections: IndexMap::new(),
             rules: Rules {
                 reject_unknown_frontmatter: false,
@@ -615,7 +592,6 @@ mod tests {
             primary_key: "path".to_string(),
             frontmatter: IndexMap::new(),
             h1_required: false,
-            h1_must_equal_frontmatter: None,
             sections: IndexMap::new(),
             rules: Rules {
                 reject_unknown_frontmatter: false,

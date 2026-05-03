@@ -82,15 +82,12 @@ fn load_md_files(
             match parsed {
                 Ok(p) => {
                     let errors = validate_file(&p, schema);
-                    let has_blocking_errors = errors.iter().any(|e| {
-                        e.error_type != crate::errors::ValidationErrorKind::LooseBody
-                    });
-                    if has_blocking_errors {
-                        (None, errors)
-                    } else {
+                    if errors.is_empty() {
                         let row = to_row(&p, schema);
                         let mtime = crate::cache::file_mtime(md_file);
                         (Some((rel, row, mtime)), errors)
+                    } else {
+                        (None, errors)
                     }
                 }
                 Err(e) => {
@@ -295,7 +292,6 @@ fn build_view_schema(
         primary_key: "path".to_string(),
         frontmatter,
         h1_required: false,
-        h1_must_equal_frontmatter: None,
         sections: IndexMap::new(),
         rules: Rules {
             reject_unknown_frontmatter: false,

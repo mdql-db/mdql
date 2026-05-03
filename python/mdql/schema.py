@@ -40,13 +40,11 @@ class Schema:
     """MDQL table schema."""
 
     def __init__(self, table: str, primary_key: str, frontmatter: dict,
-                 h1_required: bool, sections: dict, rules: Rules,
-                 h1_must_equal_frontmatter: str | None = None):
+                 h1_required: bool, sections: dict, rules: Rules):
         self.table = table
         self.primary_key = primary_key
         self.frontmatter = frontmatter
         self.h1_required = h1_required
-        self.h1_must_equal_frontmatter = h1_must_equal_frontmatter
         self.sections = sections
         self.rules = rules
 
@@ -74,7 +72,7 @@ class Schema:
     @property
     def metadata_keys(self) -> list[str]:
         """Return all queryable column names (frontmatter + synthetic)."""
-        keys = ["path", "h1", "created", "modified"]
+        keys = ["path", "created", "modified"]
         keys.extend(self.frontmatter.keys())
         return keys
 
@@ -94,7 +92,6 @@ class Schema:
             h1_required=data["h1_required"],
             sections=sections,
             rules=rules,
-            h1_must_equal_frontmatter=data.get("h1_must_equal_frontmatter"),
         )
 
     def __repr__(self):

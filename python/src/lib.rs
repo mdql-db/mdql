@@ -912,10 +912,6 @@ fn schema_to_py(py: Python<'_>, s: &mdql_core::schema::Schema) -> PyResult<PyObj
     rules.set_item("normalize_numbered_headings", s.rules.normalize_numbered_headings)?;
     dict.set_item("rules", rules)?;
 
-    if let Some(ref field) = s.h1_must_equal_frontmatter {
-        dict.set_item("h1_must_equal_frontmatter", field)?;
-    }
-
     Ok(dict.into_pyobject(py)?.into_any().unbind())
 }
 
@@ -1122,7 +1118,6 @@ fn execute_query_rows(
         primary_key: "path".to_string(),
         frontmatter: indexmap::IndexMap::new(),
         h1_required: false,
-        h1_must_equal_frontmatter: None,
         sections: indexmap::IndexMap::new(),
         rules: mdql_core::schema::Rules {
             reject_unknown_frontmatter: false,

@@ -238,7 +238,6 @@ mod tests {
             primary_key: "path".into(),
             frontmatter,
             h1_required: false,
-            h1_must_equal_frontmatter: None,
             sections: IndexMap::new(),
             rules: Rules {
                 reject_unknown_frontmatter: false,

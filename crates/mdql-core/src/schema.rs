@@ -79,7 +79,6 @@ pub struct Schema {
     pub primary_key: String,
     pub frontmatter: IndexMap<String, FieldDef>,
     pub h1_required: bool,
-    pub h1_must_equal_frontmatter: Option<String>,
     pub sections: IndexMap<String, SectionDef>,
     pub rules: Rules,
 }
@@ -238,12 +237,6 @@ pub fn load_schema(folder: &Path) -> crate::errors::Result<Schema> {
         .and_then(|m| m.get(&serde_yaml::Value::String("required".into())))
         .and_then(yaml_to_bool)
         .unwrap_or(true);
-    let h1_must_equal = h1_config
-        .and_then(yaml_to_mapping)
-        .and_then(|m| m.get(&serde_yaml::Value::String("must_equal_frontmatter".into())))
-        .and_then(yaml_to_str)
-        .map(|s| s.to_string());
-
     // Rules
     let rules_key = serde_yaml::Value::String("rules".into());
     let rules_map = fm_map.get(&rules_key).and_then(yaml_to_mapping);
@@ -280,7 +273,6 @@ pub fn load_schema(folder: &Path) -> crate::errors::Result<Schema> {
         primary_key,
         frontmatter: frontmatter_defs,
         h1_required,
-        h1_must_equal_frontmatter: h1_must_equal,
         sections: section_defs,
         rules,
     })

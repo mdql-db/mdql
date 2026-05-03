@@ -1,4 +1,4 @@
-"""Tests for loose body warning when files have content but no H2 sections."""
+"""Tests for loose body rejection — content not under H2 is a hard error."""
 
 from mdql.api import Table
 
@@ -27,8 +27,8 @@ def _make_table(tmp_path):
     return Table(str(tmp_path))
 
 
-class TestLooseBodyWarning:
-    def test_no_warning_with_h2_sections(self, tmp_path):
+class TestLooseBodyRejection:
+    def test_no_error_with_h2_sections(self, tmp_path):
         t = _make_table(tmp_path)
         (tmp_path / "note.md").write_text(
             "---\ntitle: Note\n---\n# Note\n\n## Details\n\nSome details.\n"
@@ -37,17 +37,17 @@ class TestLooseBodyWarning:
         assert len(rows) == 1
         assert len(errors) == 0
 
-    def test_warning_with_body_no_h2(self, tmp_path):
+    def test_error_with_body_no_h2(self, tmp_path):
         t = _make_table(tmp_path)
         (tmp_path / "note.md").write_text(
             "---\ntitle: Note\n---\n# Note\n\nThis is loose body content.\n"
         )
         rows, errors = t.load()
-        assert len(rows) == 1
+        assert len(rows) == 0
         assert len(errors) == 1
-        assert "not queryable" in errors[0]
+        assert "not allowed" in errors[0]
 
-    def test_no_warning_empty_body(self, tmp_path):
+    def test_no_error_empty_body(self, tmp_path):
         t = _make_table(tmp_path)
         (tmp_path / "note.md").write_text(
             "---\ntitle: Note\n---\n# Note\n"
@@ -56,29 +56,14 @@ class TestLooseBodyWarning:
         assert len(rows) == 1
         assert len(errors) == 0
 
-    def test_row_still_loaded_with_warning(self, tmp_path):
-        t = _make_table(tmp_path)
-        (tmp_path / "a.md").write_text(
-            "---\ntitle: A\n---\n\nLoose content here.\n"
-        )
-        (tmp_path / "b.md").write_text(
-            "---\ntitle: B\n---\n\n## Section\n\nStructured.\n"
-        )
-        rows, errors = t.load()
-        assert len(rows) == 2
-        assert len(errors) == 1
-        titles = {r["title"] for r in rows}
-        assert titles == {"A", "B"}
-
-    def test_no_warning_when_h2_present_with_loose_content(self, tmp_path):
+    def test_error_with_loose_content_before_h2(self, tmp_path):
         t = _make_table(tmp_path)
         (tmp_path / "note.md").write_text(
             "---\ntitle: Note\n---\n\nSome preamble.\n\n## Section\n\nBody.\n"
         )
         rows, errors = t.load()
-        assert len(rows) == 1
-        loose = [e for e in errors if "not queryable" in e]
-        assert len(loose) == 0
+        assert len(rows) == 0
+        assert any("not allowed" in e for e in errors)
 
     def test_validate_reports_loose_body(self, tmp_path):
         t = _make_table(tmp_path)
@@ -86,12 +71,21 @@ class TestLooseBodyWarning:
             "---\ntitle: Note\n---\n\nLoose content.\n"
         )
         errors = t.validate()
-        assert any("not queryable" in e for e in errors)
+        assert any("not allowed" in e for e in errors)
 
-    def test_no_warning_whitespace_only_body(self, tmp_path):
+    def test_no_error_whitespace_only_body(self, tmp_path):
         t = _make_table(tmp_path)
         (tmp_path / "note.md").write_text(
             "---\ntitle: Note\n---\n\n\n\n"
+        )
+        rows, errors = t.load()
+        assert len(rows) == 1
+        assert len(errors) == 0
+
+    def test_h1_alone_is_not_loose_body(self, tmp_path):
+        t = _make_table(tmp_path)
+        (tmp_path / "note.md").write_text(
+            "---\ntitle: Note\n---\n\n# Note\n"
         )
         rows, errors = t.load()
         assert len(rows) == 1

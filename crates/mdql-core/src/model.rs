@@ -189,11 +189,6 @@ pub fn to_row(parsed: &ParsedFile, schema: &Schema) -> Row {
         }
     }
 
-    // H1
-    if let Some(ref h1) = parsed.h1 {
-        row.insert("h1".to_string(), Value::String(h1.clone()));
-    }
-
     // Sections
     for section in &parsed.sections {
         row.insert(
@@ -230,7 +225,6 @@ mod tests {
             primary_key: "path".to_string(),
             frontmatter,
             h1_required: false,
-            h1_must_equal_frontmatter: None,
             sections: IndexMap::new(),
             rules: Rules {
                 reject_unknown_frontmatter: false,
@@ -253,11 +247,11 @@ mod tests {
     }
 
     #[test]
-    fn test_to_row_with_h1() {
+    fn test_h1_not_in_row() {
         let text = "---\ntitle: \"Test\"\ncount: 1\n---\n\n# My Title\n\n## Section\n\nBody.\n";
         let parsed = parse_text(text, "test.md", false);
         let row = to_row(&parsed, &test_schema());
-        assert_eq!(row["h1"], Value::String("My Title".into()));
+        assert!(!row.contains_key("h1"));
     }
 
     #[test]
@@ -274,7 +268,6 @@ mod tests {
             primary_key: "path".to_string(),
             frontmatter,
             h1_required: false,
-            h1_must_equal_frontmatter: None,
             sections: IndexMap::new(),
             rules: Rules {
                 reject_unknown_frontmatter: false,

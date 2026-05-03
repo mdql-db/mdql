@@ -34,7 +34,7 @@ class TestLoadSchema:
         assert "tags" in mk
         # Synthetic keys
         assert "path" in mk
-        assert "h1" in mk
+        # h1 is decorative, not a queryable column
         # Timestamps
         assert "created" in mk
         assert "modified" in mk
@@ -45,7 +45,6 @@ class TestLoadSchema:
         s = load_schema(FIXTURES / "strict_table")
         assert s.table == "docs"
         assert s.h1_required is True
-        assert s.h1_must_equal_frontmatter == "title"
         assert "Summary" in s.sections
         assert s.sections["Summary"].required is True
         assert s.reject_unknown_sections is True
