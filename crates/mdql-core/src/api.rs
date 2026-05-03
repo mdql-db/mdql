@@ -81,6 +81,52 @@ fn write_and_validate(
     Ok(())
 }
 
+fn format_yaml_scalar(v: &Value) -> String {
+    match v {
+        Value::String(s) => format!("\"{}\"", s),
+        Value::Int(n) => n.to_string(),
+        Value::Float(f) => format!("{}", f),
+        Value::Bool(b) => b.to_string(),
+        Value::Date(d) => format!("\"{}\"", d.format("%Y-%m-%d")),
+        Value::DateTime(dt) => format!("\"{}\"", dt.format("%Y-%m-%dT%H:%M:%S")),
+        Value::Null => "null".to_string(),
+        _ => v.to_display_string(),
+    }
+}
+
+fn format_yaml_dict(map: &indexmap::IndexMap<String, Value>, indent: usize) -> String {
+    let prefix = "  ".repeat(indent);
+    let mut lines = Vec::new();
+    for (k, v) in map {
+        match v {
+            Value::List(items) => {
+                if items.is_empty() {
+                    lines.push(format!("{}{}: []", prefix, k));
+                } else {
+                    lines.push(format!("{}{}:", prefix, k));
+                    for item in items {
+                        lines.push(format!("{}  - {}", prefix, item));
+                    }
+                }
+            }
+            Value::Dict(inner) => {
+                if inner.is_empty() {
+                    lines.push(format!("{}{}: {{}}", prefix, k));
+                } else {
+                    lines.push(format!("{}{}:", prefix, k));
+                    let nested = format_yaml_dict(inner, indent + 1);
+                    // nested starts with \n, strip it since we already have the key line
+                    lines.push(nested.trim_start_matches('\n').to_string());
+                }
+            }
+            _ => {
+                lines.push(format!("{}{}: {}", prefix, k, format_yaml_scalar(v)));
+            }
+        }
+    }
+    format!("\n{}", lines.join("\n"))
+}
+
 fn format_yaml_value(value: &Value, field_type: &FieldType) -> String {
     match (value, field_type) {
         (Value::String(s), FieldType::String) => format!("\"{}\"", s),
@@ -103,19 +149,7 @@ fn format_yaml_value(value: &Value, field_type: &FieldType) -> String {
             if map.is_empty() {
                 "{}".to_string()
             } else {
-                let lines: Vec<String> = map.iter()
-                    .map(|(k, v)| {
-                        let val_str = match v {
-                            Value::String(s) => format!("\"{}\"", s),
-                            Value::Int(n) => n.to_string(),
-                            Value::Float(f) => format!("{}", f),
-                            Value::Bool(b) => b.to_string(),
-                            _ => v.to_display_string(),
-                        };
-                        format!("  {}: {}", k, val_str)
-                    })
-                    .collect();
-                format!("\n{}", lines.join("\n"))
+                format_yaml_dict(map, 1)
             }
         }
         (Value::Null, _) => "null".to_string(),

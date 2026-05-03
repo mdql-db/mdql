@@ -350,18 +350,7 @@ fn check_type(
                     yaml_type_name(value)
                 ));
             }
-            if let Some(mapping) = value.as_mapping() {
-                for (k, v) in mapping {
-                    if v.is_mapping() || v.is_sequence() {
-                        return Some(format!(
-                            "Field '{}' dict value for key '{}' must be a scalar, got {}",
-                            field_name,
-                            k.as_str().unwrap_or("?"),
-                            yaml_type_name(v)
-                        ));
-                    }
-                }
-            }
+            // Dict values may be scalars, lists, or nested dicts
         }
     }
 
