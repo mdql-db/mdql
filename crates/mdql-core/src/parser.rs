@@ -25,6 +25,7 @@ pub struct ParsedFile {
     pub h1: Option<String>,
     pub h1_line_number: Option<usize>,
     pub sections: Vec<Section>,
+    pub has_loose_body: bool,
     pub parse_errors: Vec<String>,
 }
 
@@ -127,6 +128,7 @@ pub(crate) fn parse_text(text: &str, rel_path: &str, normalize_numbered: bool) -
     let mut current_heading_normalized: Option<String> = None;
     let mut current_heading_line: Option<usize> = None;
     let mut current_body_lines: Vec<&str> = Vec::new();
+    let mut has_loose_body = false;
 
     let finalize_section = |heading: &mut Option<String>,
                                 heading_norm: &mut Option<String>,
@@ -226,6 +228,8 @@ pub(crate) fn parse_text(text: &str, rel_path: &str, normalize_numbered: bool) -
         // --- Regular content ---
         if current_heading.is_some() {
             current_body_lines.push(line);
+        } else if !has_loose_body && !line.trim().is_empty() {
+            has_loose_body = true;
         }
     }
 
@@ -243,6 +247,7 @@ pub(crate) fn parse_text(text: &str, rel_path: &str, normalize_numbered: bool) -
         h1,
         h1_line_number,
         sections,
+        has_loose_body,
         parse_errors,
     }
 }

@@ -673,7 +673,10 @@ Invalid files get clear error messages:
 missing-field.md: Missing required frontmatter field 'count'
 wrong-type-date.md: Field 'created' expected datetime (ISO 8601), got string 'yesterday'
 duplicate-section.md: Duplicate section 'Body' (appears 2 times)
+loose-note.md: Body content present but no H2 sections; body is not queryable
 ```
+
+Files with body content but no H2 headings produce a warning (the row is still loaded, but the body text is not accessible via queries). Add `## Heading` sections to make body content queryable.
 
 When pointed at a database directory, also reports foreign key violations (see [Foreign key validation](#foreign-key-validation)).
 

@@ -82,12 +82,15 @@ fn load_md_files(
             match parsed {
                 Ok(p) => {
                     let errors = validate_file(&p, schema);
-                    if errors.is_empty() {
+                    let has_blocking_errors = errors.iter().any(|e| {
+                        e.error_type != crate::errors::ValidationErrorKind::LooseBody
+                    });
+                    if has_blocking_errors {
+                        (None, errors)
+                    } else {
                         let row = to_row(&p, schema);
                         let mtime = crate::cache::file_mtime(md_file);
                         (Some((rel, row, mtime)), errors)
-                    } else {
-                        (None, errors)
                     }
                 }
                 Err(e) => {

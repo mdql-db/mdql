@@ -217,6 +217,17 @@ pub fn validate_file(parsed: &ParsedFile, schema: &Schema) -> Vec<ValidationErro
         }
     }
 
+    // Loose body warning
+    if parsed.has_loose_body && parsed.sections.is_empty() {
+        errors.push(ValidationError {
+            file_path: fp.clone(),
+            error_type: ValidationErrorKind::LooseBody,
+            field: None,
+            message: "Body content present but no H2 sections; body is not queryable".to_string(),
+            line_number: None,
+        });
+    }
+
     errors
 }
 
