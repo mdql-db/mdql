@@ -125,8 +125,8 @@ class TestJoin:
         assert len(q.joins) == 1
         assert q.joins[0].table == "backtests"
         assert q.joins[0].alias == "b"
-        assert q.joins[0].left_col == "b.strategy"
-        assert q.joins[0].right_col == "s.path"
+        assert "b.strategy" in q.joins[0].condition_sql
+        assert "s.path" in q.joins[0].condition_sql
 
     def test_join_with_where(self):
         q = parse_query(
@@ -146,6 +146,16 @@ class TestJoin:
         assert len(q.joins) == 1
         assert q.order_by is not None
         assert q.limit == 5
+
+    def test_join_compound_condition(self):
+        q = parse_query(
+            "SELECT s.title FROM strategies s "
+            "LEFT JOIN backtests b ON b.strategy = s.path AND b.mode = 'PAPER'"
+        )
+        assert len(q.joins) == 1
+        assert "AND" in q.joins[0].condition_sql
+        assert "b.strategy = s.path" in q.joins[0].condition_sql
+        assert "b.mode = 'PAPER'" in q.joins[0].condition_sql
 
 
 class TestErrors:

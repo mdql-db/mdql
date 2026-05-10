@@ -265,9 +265,7 @@ struct PyJoinInfo {
     #[pyo3(get)]
     alias: Option<String>,
     #[pyo3(get)]
-    left_col: String,
-    #[pyo3(get)]
-    right_col: String,
+    condition_sql: String,
 }
 
 #[pyclass(name = "Query")]
@@ -490,8 +488,7 @@ fn select_query_to_py(py: Python<'_>, q: &qp::SelectQuery) -> PyResult<PyObject>
         },
         table: j.table.clone(),
         alias: j.alias.clone(),
-        left_col: j.left_col.clone(),
-        right_col: j.right_col.clone(),
+        condition_sql: qp::where_clause_to_sql(&j.condition),
     }).collect();
 
     let py_q = Py::new(py, PyQuery {

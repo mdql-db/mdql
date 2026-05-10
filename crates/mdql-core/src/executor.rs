@@ -471,4 +471,92 @@ mod tests {
             panic!("Expected Rows");
         }
     }
+
+    fn make_compound_join_db() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join("_mdql.md"),
+            "---\ntype: database\nname: testdb\n---\n",
+        )
+        .unwrap();
+
+        let strats = dir.path().join("strategies");
+        fs::create_dir(&strats).unwrap();
+        fs::write(
+            strats.join("_mdql.md"),
+            "---\ntype: schema\ntable: strategies\nprimary_key: path\nfrontmatter:\n  title:\n    type: string\n---\n",
+        )
+        .unwrap();
+        fs::write(strats.join("alpha.md"), "---\ntitle: Alpha\n---\n# Alpha\n").unwrap();
+        fs::write(strats.join("beta.md"), "---\ntitle: Beta\n---\n# Beta\n").unwrap();
+
+        let bt = dir.path().join("backtests");
+        fs::create_dir(&bt).unwrap();
+        fs::write(
+            bt.join("_mdql.md"),
+            "---\ntype: schema\ntable: backtests\nprimary_key: path\nfrontmatter:\n  strategy:\n    type: string\n  mode:\n    type: string\n  sharpe:\n    type: float\n---\n",
+        )
+        .unwrap();
+        fs::write(bt.join("bt-alpha-paper.md"), "---\nstrategy: alpha.md\nmode: PAPER\nsharpe: 1.5\n---\n# BT\n").unwrap();
+        fs::write(bt.join("bt-alpha-live.md"), "---\nstrategy: alpha.md\nmode: LIVE\nsharpe: 1.2\n---\n# BT\n").unwrap();
+        fs::write(bt.join("bt-beta-paper.md"), "---\nstrategy: beta.md\nmode: PAPER\nsharpe: 0.8\n---\n# BT\n").unwrap();
+
+        dir
+    }
+
+    #[test]
+    fn test_join_compound_and() {
+        let dir = make_compound_join_db();
+        let (result, _) = execute(
+            dir.path(),
+            "SELECT s.title, b.sharpe FROM strategies s JOIN backtests b ON b.strategy = s.path AND b.mode = 'PAPER'",
+        )
+        .unwrap();
+        if let QueryResult::Rows { rows, .. } = result {
+            assert_eq!(rows.len(), 2);
+            let alpha = rows.iter().find(|r| r.get("s.title") == Some(&Value::String("Alpha".into()))).unwrap();
+            assert_eq!(alpha.get("b.sharpe"), Some(&Value::Float(1.5)));
+            let beta = rows.iter().find(|r| r.get("s.title") == Some(&Value::String("Beta".into()))).unwrap();
+            assert_eq!(beta.get("b.sharpe"), Some(&Value::Float(0.8)));
+        } else {
+            panic!("Expected Rows");
+        }
+    }
+
+    #[test]
+    fn test_left_join_compound() {
+        let dir = make_compound_join_db();
+        let (result, _) = execute(
+            dir.path(),
+            "SELECT s.title, b.sharpe FROM strategies s LEFT JOIN backtests b ON b.strategy = s.path AND b.mode = 'LIVE'",
+        )
+        .unwrap();
+        if let QueryResult::Rows { rows, .. } = result {
+            assert_eq!(rows.len(), 2);
+            let alpha = rows.iter().find(|r| r.get("s.title") == Some(&Value::String("Alpha".into()))).unwrap();
+            assert_eq!(alpha.get("b.sharpe"), Some(&Value::Float(1.2)));
+            let beta = rows.iter().find(|r| r.get("s.title") == Some(&Value::String("Beta".into()))).unwrap();
+            assert_eq!(beta.get("b.sharpe"), Some(&Value::Null));
+        } else {
+            panic!("Expected Rows");
+        }
+    }
+
+    #[test]
+    fn test_join_compound_with_comparison() {
+        let dir = make_compound_join_db();
+        let (result, _) = execute(
+            dir.path(),
+            "SELECT s.title, b.sharpe FROM strategies s JOIN backtests b ON b.strategy = s.path AND b.sharpe > 1.0",
+        )
+        .unwrap();
+        if let QueryResult::Rows { rows, .. } = result {
+            assert_eq!(rows.len(), 2);
+            assert!(rows.iter().all(|r| {
+                if let Some(Value::Float(s)) = r.get("b.sharpe") { *s > 1.0 } else { false }
+            }));
+        } else {
+            panic!("Expected Rows");
+        }
+    }
 }

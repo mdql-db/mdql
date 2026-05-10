@@ -290,6 +290,13 @@ rows, columns = db.query(
     "FROM strategies s "
     "LEFT JOIN backtests b ON b.strategy = s.path"
 )
+
+# Compound ON conditions — filter during join
+rows, columns = db.query(
+    "SELECT s.title, b.sharpe "
+    "FROM strategies s "
+    "LEFT JOIN backtests b ON b.strategy = s.path AND b.mode = 'PAPER'"
+)
 ```
 
 ### Single-table queries
@@ -592,6 +599,17 @@ mdql query my-db/ \
    FROM strategies s
    JOIN backtests b ON b.strategy = s.path
    LEFT JOIN critiques c ON c.strategy = s.path"
+
+# Compound ON conditions (AND/OR)
+mdql query examples/ \
+  "SELECT s.title, b.sharpe
+   FROM strategies s
+   LEFT JOIN backtests b ON b.strategy = s.path AND b.mode = 'PAPER'"
+
+mdql query examples/ \
+  "SELECT s.title, b.sharpe
+   FROM strategies s
+   JOIN backtests b ON b.strategy = s.path AND b.sharpe > 1.0"
 ```
 
 ### SQL write operations

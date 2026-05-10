@@ -221,15 +221,12 @@ impl Parser {
                 }
             }
             self.expect("keyword", Some("ON"))?;
-            let left_col = self.parse_ident()?;
-            self.expect("op", Some("="))?;
-            let right_col = self.parse_ident()?;
+            let condition = self.parse_or_expr()?;
             joins.push(JoinClause {
                 join_type: jt,
                 table: join_table,
                 alias: join_alias,
-                left_col,
-                right_col,
+                condition,
             });
         }
 
@@ -1261,12 +1258,10 @@ mod tests {
             assert_eq!(q.joins.len(), 2);
             assert_eq!(q.joins[0].table, "backtests");
             assert_eq!(q.joins[0].alias, Some("b".into()));
-            assert_eq!(q.joins[0].left_col, "b.strategy");
-            assert_eq!(q.joins[0].right_col, "s.path");
+            assert_eq!(where_clause_to_sql(&q.joins[0].condition), "b.strategy = s.path");
             assert_eq!(q.joins[1].table, "critiques");
             assert_eq!(q.joins[1].alias, Some("c".into()));
-            assert_eq!(q.joins[1].left_col, "c.strategy");
-            assert_eq!(q.joins[1].right_col, "s.path");
+            assert_eq!(where_clause_to_sql(&q.joins[1].condition), "c.strategy = s.path");
         } else {
             panic!("Expected Select");
         }
@@ -1297,6 +1292,54 @@ mod tests {
             assert_eq!(q.joins.len(), 2);
             assert_eq!(q.joins[0].join_type, JoinType::Inner);
             assert_eq!(q.joins[1].join_type, JoinType::Left);
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_join_compound_and() {
+        let stmt = parse_query(
+            "SELECT s.title FROM strategies s LEFT JOIN backtests b ON b.strategy = s.path AND b.mode = 'PAPER'",
+        )
+        .unwrap();
+        if let Statement::Select(q) = stmt {
+            assert_eq!(q.joins.len(), 1);
+            assert_eq!(q.joins[0].join_type, JoinType::Left);
+            let sql = where_clause_to_sql(&q.joins[0].condition);
+            assert!(sql.contains("b.strategy = s.path"));
+            assert!(sql.contains("AND"));
+            assert!(sql.contains("b.mode = 'PAPER'"));
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_join_compound_or() {
+        let stmt = parse_query(
+            "SELECT * FROM a JOIN b ON a.id = b.id OR a.alt = b.id",
+        )
+        .unwrap();
+        if let Statement::Select(q) = stmt {
+            let sql = where_clause_to_sql(&q.joins[0].condition);
+            assert!(sql.contains("OR"));
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_join_compound_with_where() {
+        let stmt = parse_query(
+            "SELECT s.title FROM strategies s JOIN backtests b ON b.strategy = s.path AND b.mode = 'PAPER' WHERE s.title = 'Alpha'",
+        )
+        .unwrap();
+        if let Statement::Select(q) = stmt {
+            assert_eq!(q.joins.len(), 1);
+            assert!(q.where_clause.is_some());
+            let join_sql = where_clause_to_sql(&q.joins[0].condition);
+            assert!(join_sql.contains("AND"));
         } else {
             panic!("Expected Select");
         }

@@ -54,7 +54,7 @@ def _reconstruct_sql(query):
         parts.append(f"JOIN {join.table}")
         if join.alias:
             parts.append(join.alias)
-        parts.append(f"ON {join.left_col} = {join.right_col}")
+        parts.append(f"ON {join.condition_sql}")
 
     where_clause = getattr(inner, 'where_clause', None) or getattr(query, 'where_', None)
     if where_clause is None:

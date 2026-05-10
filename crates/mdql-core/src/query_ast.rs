@@ -153,8 +153,7 @@ pub struct JoinClause {
     pub join_type: JoinType,
     pub table: String,
     pub alias: Option<String>,
-    pub left_col: String,
-    pub right_col: String,
+    pub condition: WhereClause,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -303,6 +302,60 @@ impl Statement {
             Statement::AlterMerge(q) => &q.table,
             Statement::CreateView(q) => &q.view_name,
             Statement::DropView(q) => &q.view_name,
+        }
+    }
+}
+
+pub fn where_clause_to_sql(clause: &WhereClause) -> String {
+    match clause {
+        WhereClause::BoolOp(bop) => {
+            let left = where_clause_to_sql(&bop.left);
+            let right = where_clause_to_sql(&bop.right);
+            let op = match bop.op {
+                BoolOpKind::And => "AND",
+                BoolOpKind::Or => "OR",
+            };
+            format!("{} {} {}", left, op, right)
+        }
+        WhereClause::Comparison(cmp) => {
+            let op_str = match cmp.op {
+                CmpOp::Eq => "=",
+                CmpOp::Ne => "!=",
+                CmpOp::Lt => "<",
+                CmpOp::Gt => ">",
+                CmpOp::Le => "<=",
+                CmpOp::Ge => ">=",
+                CmpOp::Like => "LIKE",
+                CmpOp::NotLike => "NOT LIKE",
+                CmpOp::In => "IN",
+                CmpOp::IsNull => "IS NULL",
+                CmpOp::IsNotNull => "IS NOT NULL",
+            };
+            if matches!(cmp.op, CmpOp::IsNull | CmpOp::IsNotNull) {
+                if let Some(ref expr) = cmp.left_expr {
+                    return format!("{} {}", expr.display_name(), op_str);
+                }
+                return format!("{} {}", cmp.column, op_str);
+            }
+            if let (Some(ref left), Some(ref right)) = (&cmp.left_expr, &cmp.right_expr) {
+                return format!("{} {} {}", left.display_name(), op_str, right.display_name());
+            }
+            match &cmp.value {
+                Some(SqlValue::String(s)) => format!("{} {} '{}'", cmp.column, op_str, s),
+                Some(SqlValue::Int(n)) => format!("{} {} {}", cmp.column, op_str, n),
+                Some(SqlValue::Float(f)) => format!("{} {} {}", cmp.column, op_str, f),
+                Some(SqlValue::Null) => format!("{} {} NULL", cmp.column, op_str),
+                Some(SqlValue::List(items)) => {
+                    let vals: Vec<String> = items.iter().map(|v| match v {
+                        SqlValue::String(s) => format!("'{}'", s),
+                        SqlValue::Int(n) => n.to_string(),
+                        SqlValue::Float(f) => f.to_string(),
+                        _ => "NULL".to_string(),
+                    }).collect();
+                    format!("{} {} ({})", cmp.column, op_str, vals.join(", "))
+                }
+                None => format!("{} {}", cmp.column, op_str),
+            }
         }
     }
 }
