@@ -240,9 +240,17 @@ pub struct UpdateQuery {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum DeleteMode {
+    Default,
+    Cascade,
+    Restrict,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct DeleteQuery {
     pub table: String,
     pub where_clause: Option<WhereClause>,
+    pub mode: DeleteMode,
 }
 
 #[derive(Debug, Clone, PartialEq)]

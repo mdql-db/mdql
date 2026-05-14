@@ -401,8 +401,25 @@ updated_paths = strategies.update_many(
 ### DELETE
 
 ```python
+# Delete a single file
 strategies.delete("my-new-strategy.md")
+
+# CASCADE — delete row and all FK-dependent rows (backtests, events, etc.)
+db.delete("strategies", "status = 'KILLED'", cascade=True)
+
+# RESTRICT — error if any FK-dependent rows exist
+db.delete("strategies", "path = 'alpha.md'", restrict=True)
+
+# Dry-run — preview the cascade/restrict plan without executing
+plan = db.delete("strategies", "status = 'KILLED'", cascade=True, dry_run=True)
+# Returns dict: {"primary_deletes": [...], "cascade_actions": [...], "restrict_violations": [...]}
+
+# Via SQL
+db.execute("DELETE FROM strategies WHERE status = 'KILLED' CASCADE")
+db.execute("DELETE FROM strategies WHERE path = 'alpha.md' RESTRICT")
 ```
+
+CASCADE walks the FK graph via BFS. Scalar FKs (e.g. `backtests.strategy -> strategies.path`) trigger dependent row deletion. List FKs (e.g. `string[]` columns) prune the deleted value from the list without deleting the row. RESTRICT checks for any dependent references and blocks the delete if found.
 
 ### Rename
 
@@ -627,6 +644,19 @@ mdql query examples/strategies/ \
 # DELETE
 mdql query examples/strategies/ \
   "DELETE FROM strategies WHERE path = 'new-strategy.md'"
+
+# CASCADE DELETE — removes row and all FK-dependent rows
+mdql query examples/ \
+  "DELETE FROM strategies WHERE status = 'KILLED' CASCADE"
+# DELETE 3 (cascade: 7 deleted, 2 list refs pruned)
+
+# RESTRICT DELETE — errors if dependent rows exist
+mdql query examples/ \
+  "DELETE FROM strategies WHERE path = 'alpha.md' RESTRICT"
+
+# Dry-run — preview what would happen without executing
+mdql query examples/ --dry-run \
+  "DELETE FROM strategies WHERE status = 'KILLED' CASCADE"
 ```
 
 For `string[]` columns, pass comma-separated values in a single string: `'funding-rates,defi'`.

@@ -695,6 +695,28 @@ impl Table {
         Ok(format!("DELETE {}", count))
     }
 
+    pub fn exec_delete_matched(&self, filenames: &[String]) -> crate::errors::Result<String> {
+        if filenames.is_empty() {
+            return Ok("DELETE 0".to_string());
+        }
+        let _lock = TableLock::acquire(&self.path)?;
+        let count;
+        {
+            let mut txn = TableTransaction::new(&self.path, "DELETE")?;
+            let mut c = 0;
+            for path_str in filenames {
+                let filepath = self.path.join(path_str);
+                let content = std::fs::read_to_string(&filepath)?;
+                txn.record_delete(&filepath, &content)?;
+                self.delete_no_lock(path_str)?;
+                c += 1;
+            }
+            count = c;
+            txn.commit()?;
+        }
+        Ok(format!("DELETE {}", count))
+    }
+
     fn data_files(&self) -> Vec<PathBuf> {
         let mut files: Vec<PathBuf> = std::fs::read_dir(&self.path)
             .into_iter()

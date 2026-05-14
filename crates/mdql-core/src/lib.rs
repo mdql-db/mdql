@@ -20,3 +20,4 @@ pub(crate) mod search;
 pub mod watcher;
 pub mod executor;
 pub mod checksums;
+pub mod cascade;

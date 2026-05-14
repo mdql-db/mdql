@@ -45,6 +45,9 @@ enum Commands {
         /// Max chars per cell in table mode
         #[arg(short, long, default_value = "80")]
         truncate: usize,
+        /// Show what a DELETE would do without executing
+        #[arg(long)]
+        dry_run: bool,
     },
     /// Create a new entry in a table
     Create {
@@ -194,7 +197,8 @@ fn main() {
             sql,
             format,
             truncate,
-        }) => cmd_query(&folder, &sql, &format, truncate),
+            dry_run,
+        }) => cmd_query(&folder, &sql, &format, truncate, dry_run),
         Some(Commands::Create {
             folder,
             set_fields,
@@ -361,7 +365,11 @@ fn cmd_query(
     sql: &str,
     format: &str,
     truncate: usize,
+    dry_run: bool,
 ) -> Result<(), MdqlError> {
+    if dry_run {
+        return cmd_dry_run(folder, sql);
+    }
     let (result, warnings) = executor::execute(folder, sql)?;
     print_fk_warnings(&warnings);
     match result {
@@ -372,6 +380,91 @@ fn cmd_query(
             println!("{}", msg);
         }
     }
+    Ok(())
+}
+
+fn cmd_dry_run(folder: &std::path::Path, sql: &str) -> Result<(), MdqlError> {
+    use mdql_core::query_parser::{DeleteMode, Statement, parse_query};
+
+    let stmt = parse_query(sql)?;
+    let dq = match stmt {
+        Statement::Delete(dq) => dq,
+        _ => return Err(MdqlError::General("--dry-run only works with DELETE statements".into())),
+    };
+
+    if !is_database_dir(folder) && dq.mode != DeleteMode::Default {
+        return Err(MdqlError::General("CASCADE/RESTRICT requires a database directory".into()));
+    }
+
+    let (_config, tables, _errors) = mdql_core::loader::load_database(folder)?;
+    let config = mdql_core::database::load_database_config(folder)?;
+
+    let (_, rows) = tables.get(&dq.table).ok_or_else(|| {
+        MdqlError::QueryExecution(format!("table '{}' not found in database", dq.table))
+    })?;
+
+    let matched_filenames: Vec<String> = if let Some(ref wc) = dq.where_clause {
+        rows.iter()
+            .filter(|r| mdql_core::query_engine::evaluate(wc, r))
+            .filter_map(|r| r.get("path").and_then(|v| v.as_str()).map(|s| s.to_string()))
+            .collect()
+    } else {
+        rows.iter()
+            .filter_map(|r| r.get("path").and_then(|v| v.as_str()).map(|s| s.to_string()))
+            .collect()
+    };
+
+    println!("DRY RUN — no files will be modified\n");
+    println!("Primary deletes ({}/{}):", dq.table, matched_filenames.len());
+    for f in &matched_filenames {
+        println!("  DELETE {}/{}", dq.table, f);
+    }
+
+    match dq.mode {
+        DeleteMode::Cascade => {
+            let plan = mdql_core::cascade::build_cascade_plan(
+                &dq.table, &matched_filenames, &config, &tables,
+            );
+            if plan.cascade_actions.is_empty() {
+                println!("\nNo cascade actions (no dependent rows found)");
+            } else {
+                println!("\nCascade actions:");
+                for action in &plan.cascade_actions {
+                    match action {
+                        mdql_core::cascade::CascadeAction::Delete { table, filename } => {
+                            println!("  DELETE {}/{}", table, filename);
+                        }
+                        mdql_core::cascade::CascadeAction::PruneList { table, filename, column, value_to_remove } => {
+                            println!("  PRUNE {}/{} — remove '{}' from {}", table, filename, value_to_remove, column);
+                        }
+                    }
+                }
+            }
+            println!("\nTotal: {} primary + {} cascade deletes, {} list prunes",
+                matched_filenames.len(),
+                plan.cascade_actions.iter().filter(|a| matches!(a, mdql_core::cascade::CascadeAction::Delete { .. })).count(),
+                plan.cascade_actions.iter().filter(|a| matches!(a, mdql_core::cascade::CascadeAction::PruneList { .. })).count(),
+            );
+        }
+        DeleteMode::Restrict => {
+            let plan = mdql_core::cascade::build_restrict_plan(
+                &dq.table, &matched_filenames, &config, &tables,
+            );
+            if plan.restrict_violations.is_empty() {
+                println!("\nNo dependent references found — DELETE would proceed");
+            } else {
+                println!("\nRESTRICT violations ({}):", plan.restrict_violations.len());
+                for v in &plan.restrict_violations {
+                    println!("  {}", v);
+                }
+                println!("\nDELETE would be BLOCKED");
+            }
+        }
+        DeleteMode::Default => {
+            println!("\nPlain DELETE — {} file(s) would be removed", matched_filenames.len());
+        }
+    }
+
     Ok(())
 }
 

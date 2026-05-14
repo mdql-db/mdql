@@ -368,6 +368,8 @@ impl PyUpdateQuery {
 struct PyDeleteQuery {
     #[pyo3(get)]
     table: String,
+    #[pyo3(get)]
+    mode: String,
     where_inner: Option<qp::WhereClause>,
 }
 
@@ -797,7 +799,7 @@ impl PyDatabase {
             .map_err(mdql_to_py_err)
     }
 
-    /// Execute a DDL statement (CREATE VIEW, DROP VIEW) against the database.
+    /// Execute a DDL or DML statement against the database.
     fn execute(&mut self, sql: &str) -> PyResult<String> {
         let (result, _errors) = mdql_core::executor::execute(&self.inner.path, sql)
             .map_err(mdql_to_py_err)?;
@@ -807,6 +809,81 @@ impl PyDatabase {
                 Err(pyo3::exceptions::PyValueError::new_err(
                     "Use query() for SELECT statements",
                 ))
+            }
+        }
+    }
+
+    #[pyo3(signature = (table_name, where_sql=None, *, cascade=false, restrict=false, dry_run=false))]
+    fn delete(&self, py: Python<'_>, table_name: &str, where_sql: Option<&str>, cascade: bool, restrict: bool, dry_run: bool) -> PyResult<PyObject> {
+        if cascade && restrict {
+            return Err(PyValueError::new_err("Cannot use both cascade and restrict"));
+        }
+
+        let mode_kw = if cascade { " CASCADE" } else if restrict { " RESTRICT" } else { "" };
+        let where_part = where_sql.map(|w| format!(" WHERE {}", w)).unwrap_or_default();
+        let sql = format!("DELETE FROM {}{}{}", table_name, where_part, mode_kw);
+
+        if dry_run {
+            let stmt = qp::parse_query(&sql).map_err(mdql_to_py_err)?;
+            let dq = match stmt {
+                qp::Statement::Delete(dq) => dq,
+                _ => return Err(PyValueError::new_err("Not a DELETE statement")),
+            };
+
+            let config = mdql_core::database::load_database_config(&self.inner.path)
+                .map_err(mdql_to_py_err)?;
+            let (_cfg, tables, _errors) = mdql_core::loader::load_database(&self.inner.path)
+                .map_err(mdql_to_py_err)?;
+            let (_, rows) = tables.get(table_name)
+                .ok_or_else(|| PyValueError::new_err(format!("Table '{}' not found", table_name)))?;
+
+            let matched: Vec<String> = if let Some(ref wc) = dq.where_clause {
+                rows.iter()
+                    .filter(|r| mdql_core::query_engine::evaluate(wc, r))
+                    .filter_map(|r| r.get("path").and_then(|v| v.as_str()).map(|s| s.to_string()))
+                    .collect()
+            } else {
+                rows.iter()
+                    .filter_map(|r| r.get("path").and_then(|v| v.as_str()).map(|s| s.to_string()))
+                    .collect()
+            };
+
+            let plan = if cascade {
+                mdql_core::cascade::build_cascade_plan(table_name, &matched, &config, &tables)
+            } else if restrict {
+                mdql_core::cascade::build_restrict_plan(table_name, &matched, &config, &tables)
+            } else {
+                mdql_core::cascade::CascadePlan {
+                    primary_deletes: matched.iter().map(|f| (table_name.to_string(), f.clone())).collect(),
+                    cascade_actions: vec![],
+                    restrict_violations: vec![],
+                }
+            };
+
+            let dict = pyo3::types::PyDict::new(py);
+            let primary = PyList::new(py, plan.primary_deletes.iter().map(|(t, f)| format!("{}/{}", t, f)))?;
+            dict.set_item("primary_deletes", primary)?;
+
+            let actions = PyList::new(py, plan.cascade_actions.iter().map(|a| match a {
+                mdql_core::cascade::CascadeAction::Delete { table, filename } => {
+                    format!("DELETE {}/{}", table, filename)
+                }
+                mdql_core::cascade::CascadeAction::PruneList { table, filename, column, value_to_remove } => {
+                    format!("PRUNE {}/{} remove '{}' from {}", table, filename, value_to_remove, column)
+                }
+            }))?;
+            dict.set_item("cascade_actions", actions)?;
+
+            let violations = PyList::new(py, &plan.restrict_violations)?;
+            dict.set_item("restrict_violations", violations)?;
+
+            Ok(dict.into_pyobject(py)?.into_any().unbind())
+        } else {
+            let (result, _errors) = mdql_core::executor::execute(&self.inner.path, &sql)
+                .map_err(mdql_to_py_err)?;
+            match result {
+                mdql_core::executor::QueryResult::Message(msg) => Ok(msg.into_pyobject(py)?.into_any().unbind()),
+                _ => Err(PyValueError::new_err("Unexpected result")),
             }
         }
     }
@@ -1030,8 +1107,14 @@ fn parse_query(py: Python<'_>, sql: &str) -> PyResult<PyObject> {
             Ok(pyq.into_pyobject(py)?.into_any().unbind())
         }
         qp::Statement::Delete(q) => {
+            let mode_str = match q.mode {
+                qp::DeleteMode::Default => "DEFAULT",
+                qp::DeleteMode::Cascade => "CASCADE",
+                qp::DeleteMode::Restrict => "RESTRICT",
+            };
             let pyq = Py::new(py, PyDeleteQuery {
                 table: q.table,
+                mode: mode_str.to_string(),
                 where_inner: q.where_clause,
             })?;
             Ok(pyq.into_pyobject(py)?.into_any().unbind())

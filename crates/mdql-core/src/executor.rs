@@ -3,9 +3,11 @@
 use std::path::Path;
 
 use crate::api::Table;
+use crate::cascade;
 use crate::database::{ViewDef, is_database_dir, load_database_config, save_database_config};
 use crate::errors::{MdqlError, ValidationError};
 use crate::model::Row;
+use crate::query_ast::DeleteMode;
 use crate::query_engine::{execute_join_query, execute_query};
 use crate::query_parser::{Statement, parse_query};
 
@@ -121,6 +123,62 @@ pub fn execute(path: &Path, sql: &str) -> crate::errors::Result<(QueryResult, Ve
                 QueryResult::Message(format!("View '{}' dropped", dv.view_name)),
                 vec![],
             ))
+        }
+        Statement::Delete(ref dq) if dq.mode != DeleteMode::Default => {
+            if !is_db {
+                return Err(MdqlError::QueryExecution(
+                    "CASCADE/RESTRICT requires a database directory".into(),
+                ));
+            }
+            let config = load_database_config(path)?;
+            if config.views.iter().any(|v| v.name == dq.table) {
+                return Err(MdqlError::QueryExecution(format!(
+                    "Cannot write to view '{}' — views are read-only",
+                    dq.table
+                )));
+            }
+            let (_cfg, tables, errors) = crate::loader::load_database(path)?;
+            let (_, rows) = tables.get(&dq.table).ok_or_else(|| {
+                MdqlError::QueryExecution(format!("table '{}' not found in database", dq.table))
+            })?;
+            let matched_filenames: Vec<String> = if let Some(ref wc) = dq.where_clause {
+                rows.iter()
+                    .filter(|r| crate::query_engine::evaluate(wc, r))
+                    .filter_map(|r| r.get("path").and_then(|v| v.as_str()).map(|s| s.to_string()))
+                    .collect()
+            } else {
+                rows.iter()
+                    .filter_map(|r| r.get("path").and_then(|v| v.as_str()).map(|s| s.to_string()))
+                    .collect()
+            };
+
+            match dq.mode {
+                DeleteMode::Cascade => {
+                    let plan = cascade::build_cascade_plan(
+                        &dq.table, &matched_filenames, &config, &tables,
+                    );
+                    let msg = cascade::execute_cascade_plan(&plan, path)?;
+                    Ok((QueryResult::Message(msg), errors))
+                }
+                DeleteMode::Restrict => {
+                    let plan = cascade::build_restrict_plan(
+                        &dq.table, &matched_filenames, &config, &tables,
+                    );
+                    if !plan.restrict_violations.is_empty() {
+                        let violations = plan.restrict_violations.join("\n  ");
+                        return Err(MdqlError::QueryExecution(format!(
+                            "RESTRICT: cannot delete — {} dependent references:\n  {}",
+                            plan.restrict_violations.len(),
+                            violations,
+                        )));
+                    }
+                    let table_path = path.join(&dq.table);
+                    let table = Table::new(&table_path)?;
+                    let msg = table.exec_delete_matched(&matched_filenames)?;
+                    Ok((QueryResult::Message(msg), errors))
+                }
+                DeleteMode::Default => unreachable!(),
+            }
         }
         ref stmt @ (Statement::Insert(_)
         | Statement::Update(_)
@@ -558,5 +616,105 @@ mod tests {
         } else {
             panic!("Expected Rows");
         }
+    }
+
+    fn make_cascade_db() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+
+        fs::write(
+            dir.path().join("_mdql.md"),
+            "---\ntype: database\nname: testdb\nforeign_keys:\n  - from: backtests.strategy\n    to: strategies.path\n---\n",
+        )
+        .unwrap();
+
+        let strats = dir.path().join("strategies");
+        fs::create_dir(&strats).unwrap();
+        fs::write(
+            strats.join("_mdql.md"),
+            "---\ntype: schema\ntable: strategies\nprimary_key: path\nfrontmatter:\n  title:\n    type: string\n  status:\n    type: string\n---\n",
+        )
+        .unwrap();
+        fs::write(strats.join("alpha.md"), "---\ntitle: Alpha\nstatus: KILLED\n---\n# Alpha\n").unwrap();
+        fs::write(strats.join("beta.md"), "---\ntitle: Beta\nstatus: LIVE\n---\n# Beta\n").unwrap();
+
+        let bt = dir.path().join("backtests");
+        fs::create_dir(&bt).unwrap();
+        fs::write(
+            bt.join("_mdql.md"),
+            "---\ntype: schema\ntable: backtests\nprimary_key: path\nfrontmatter:\n  strategy:\n    type: string\n  sharpe:\n    type: float\n---\n",
+        )
+        .unwrap();
+        fs::write(bt.join("bt-alpha.md"), "---\nstrategy: alpha.md\nsharpe: 1.5\n---\n# BT Alpha\n").unwrap();
+        fs::write(bt.join("bt-beta.md"), "---\nstrategy: beta.md\nsharpe: 0.8\n---\n# BT Beta\n").unwrap();
+
+        dir
+    }
+
+    #[test]
+    fn test_cascade_delete() {
+        let dir = make_cascade_db();
+        let (result, _) = execute(
+            dir.path(),
+            "DELETE FROM strategies WHERE status = 'KILLED' CASCADE",
+        )
+        .unwrap();
+        if let QueryResult::Message(msg) = result {
+            assert!(msg.contains("DELETE 1"));
+            assert!(msg.contains("cascade"));
+        } else {
+            panic!("Expected Message");
+        }
+        assert!(!dir.path().join("strategies/alpha.md").exists());
+        assert!(!dir.path().join("backtests/bt-alpha.md").exists());
+        assert!(dir.path().join("strategies/beta.md").exists());
+        assert!(dir.path().join("backtests/bt-beta.md").exists());
+    }
+
+    #[test]
+    fn test_restrict_delete_blocks() {
+        let dir = make_cascade_db();
+        let err = execute(
+            dir.path(),
+            "DELETE FROM strategies WHERE status = 'KILLED' RESTRICT",
+        );
+        assert!(err.is_err());
+        let msg = err.unwrap_err().to_string();
+        assert!(msg.contains("RESTRICT"));
+        assert!(dir.path().join("strategies/alpha.md").exists());
+    }
+
+    #[test]
+    fn test_restrict_delete_allows_no_dependents() {
+        let dir = make_cascade_db();
+        fs::remove_file(dir.path().join("backtests/bt-alpha.md")).unwrap();
+
+        let (result, _) = execute(
+            dir.path(),
+            "DELETE FROM strategies WHERE status = 'KILLED' RESTRICT",
+        )
+        .unwrap();
+        if let QueryResult::Message(msg) = result {
+            assert!(msg.contains("DELETE 1"));
+        } else {
+            panic!("Expected Message");
+        }
+        assert!(!dir.path().join("strategies/alpha.md").exists());
+    }
+
+    #[test]
+    fn test_cascade_default_unchanged() {
+        let dir = make_cascade_db();
+        let (result, _) = execute(
+            dir.path(),
+            "DELETE FROM strategies WHERE status = 'KILLED'",
+        )
+        .unwrap();
+        if let QueryResult::Message(msg) = result {
+            assert!(msg.contains("DELETE 1"));
+        } else {
+            panic!("Expected Message");
+        }
+        assert!(!dir.path().join("strategies/alpha.md").exists());
+        assert!(dir.path().join("backtests/bt-alpha.md").exists());
     }
 }

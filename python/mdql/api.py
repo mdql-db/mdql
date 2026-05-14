@@ -183,5 +183,32 @@ class Database:
         except RuntimeError as e:
             raise MdqlError(str(e)) from None
 
+    def execute(self, sql: str) -> str:
+        try:
+            return self._rust.execute(sql)
+        except (ValueError, RuntimeError) as e:
+            raise MdqlError(str(e)) from None
+
+    def delete(
+        self,
+        table_name: str,
+        where_sql: str | None = None,
+        *,
+        cascade: bool = False,
+        restrict: bool = False,
+        dry_run: bool = False,
+    ) -> str | dict:
+        try:
+            return self._rust.delete(
+                table_name, where_sql,
+                cascade=cascade, restrict=restrict, dry_run=dry_run,
+            )
+        except (ValueError, RuntimeError) as e:
+            raise MdqlError(str(e)) from None
+
+    @property
+    def view_names(self) -> list[str]:
+        return self._rust.view_names
+
     def __repr__(self) -> str:
         return f"Database({str(self.path)!r})"

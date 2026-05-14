@@ -360,10 +360,19 @@ impl Parser {
             where_clause = Some(self.parse_or_expr()?);
         }
 
+        let mode = if self.match_keyword("CASCADE") {
+            DeleteMode::Cascade
+        } else if self.match_keyword("RESTRICT") {
+            DeleteMode::Restrict
+        } else {
+            DeleteMode::Default
+        };
+
         self.expect_end()?;
         Ok(DeleteQuery {
             table,
             where_clause,
+            mode,
         })
     }
 
@@ -1954,6 +1963,51 @@ mod tests {
             }
         } else {
             panic!("Expected CreateView, got {:?}", stmt);
+        }
+    }
+
+    #[test]
+    fn test_delete_cascade() {
+        let stmt = parse_query("DELETE FROM strategies WHERE status = 'KILLED' CASCADE").unwrap();
+        if let Statement::Delete(q) = stmt {
+            assert_eq!(q.table, "strategies");
+            assert!(q.where_clause.is_some());
+            assert_eq!(q.mode, DeleteMode::Cascade);
+        } else {
+            panic!("Expected Delete");
+        }
+    }
+
+    #[test]
+    fn test_delete_restrict() {
+        let stmt = parse_query("DELETE FROM strategies WHERE path = 'alpha.md' RESTRICT").unwrap();
+        if let Statement::Delete(q) = stmt {
+            assert_eq!(q.table, "strategies");
+            assert_eq!(q.mode, DeleteMode::Restrict);
+        } else {
+            panic!("Expected Delete");
+        }
+    }
+
+    #[test]
+    fn test_delete_default_unchanged() {
+        let stmt = parse_query("DELETE FROM strategies WHERE status = 'KILLED'").unwrap();
+        if let Statement::Delete(q) = stmt {
+            assert_eq!(q.mode, DeleteMode::Default);
+        } else {
+            panic!("Expected Delete");
+        }
+    }
+
+    #[test]
+    fn test_delete_cascade_no_where() {
+        let stmt = parse_query("DELETE FROM strategies CASCADE").unwrap();
+        if let Statement::Delete(q) = stmt {
+            assert_eq!(q.table, "strategies");
+            assert!(q.where_clause.is_none());
+            assert_eq!(q.mode, DeleteMode::Cascade);
+        } else {
+            panic!("Expected Delete");
         }
     }
 }
