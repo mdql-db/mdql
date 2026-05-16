@@ -7,9 +7,10 @@ use crate::cascade;
 use crate::database::{ViewDef, is_database_dir, load_database_config, save_database_config};
 use crate::errors::{MdqlError, ValidationError};
 use crate::model::Row;
-use crate::query_ast::DeleteMode;
+use crate::query_ast::*;
 use crate::query_engine::{execute_join_query, execute_query};
 use crate::query_parser::{Statement, parse_query};
+use crate::schema::Schema;
 
 #[derive(Debug)]
 pub enum QueryResult {
@@ -22,34 +23,31 @@ pub fn execute(path: &Path, sql: &str) -> crate::errors::Result<(QueryResult, Ve
     let is_db = is_database_dir(path);
 
     match stmt {
-        Statement::Select(ref q) if !q.ctes.is_empty() => {
-            if !is_db {
+        Statement::Select(ref q) => {
+            let has_ctes = !q.ctes.is_empty();
+            let has_subqueries = query_has_subqueries(q);
+            let needs_db = has_ctes || has_subqueries || q.subquery.is_some() || !q.joins.is_empty() || is_db;
+
+            if has_ctes && !is_db {
                 return Err(MdqlError::QueryExecution(
                     "CTEs (WITH) require a database directory".into(),
                 ));
             }
-            let (_config, mut tables, errors) = crate::loader::load_database(path)?;
-            for cte in &q.ctes {
-                let (rows, cols) = materialize_cte(&cte.query, &tables)?;
-                let schema = crate::loader::build_view_schema(&cte.name, &cols, &rows);
-                tables.insert(cte.name.clone(), (schema, rows));
-            }
-            let (rows, cols) = if !q.joins.is_empty() {
-                execute_join_query(q, &tables)?
-            } else {
-                let (schema, rows) = tables.get(&q.table).ok_or_else(|| {
-                    MdqlError::QueryExecution(format!(
-                        "table '{}' not found in database",
-                        q.table
-                    ))
-                })?;
-                execute_query(q, rows, schema)?
-            };
-            Ok((QueryResult::Rows { rows, columns: cols }, errors))
-        }
-        Statement::Select(ref q) => {
-            if q.subquery.is_some() || !q.joins.is_empty() || is_db {
-                let (_config, tables, errors) = crate::loader::load_database(path)?;
+
+            if needs_db {
+                let (_config, mut tables, errors) = crate::loader::load_database(path)?;
+
+                for cte in &q.ctes {
+                    let (rows, cols) = materialize_cte(&cte.query, &tables)?;
+                    let schema = crate::loader::build_view_schema(&cte.name, &cols, &rows);
+                    tables.insert(cte.name.clone(), (schema, rows));
+                }
+
+                let mut q = q.clone();
+                if has_subqueries {
+                    materialize_subqueries(&mut q, &tables)?;
+                }
+
                 let (rows, cols) = if let Some(ref sub) = q.subquery {
                     let source_table = &sub.table;
                     let (schema, table_rows) = tables.get(source_table).ok_or_else(|| {
@@ -58,9 +56,9 @@ pub fn execute(path: &Path, sql: &str) -> crate::errors::Result<(QueryResult, Ve
                             source_table
                         ))
                     })?;
-                    execute_query(q, table_rows, schema)?
+                    execute_query(&q, table_rows, schema)?
                 } else if !q.joins.is_empty() {
-                    execute_join_query(q, &tables)?
+                    execute_join_query(&q, &tables)?
                 } else {
                     let (schema, rows) = tables.get(&q.table).ok_or_else(|| {
                         MdqlError::QueryExecution(format!(
@@ -68,7 +66,7 @@ pub fn execute(path: &Path, sql: &str) -> crate::errors::Result<(QueryResult, Ve
                             q.table
                         ))
                     })?;
-                    execute_query(q, rows, schema)?
+                    execute_query(&q, rows, schema)?
                 };
                 Ok((QueryResult::Rows { rows, columns: cols }, errors))
             } else {
@@ -250,6 +248,153 @@ pub fn materialize_cte(
             MdqlError::QueryExecution(format!("table '{}' not found in database", query.table))
         })?;
         execute_query(query, rows, schema)
+    }
+}
+
+type Tables = std::collections::HashMap<String, (Schema, Vec<Row>)>;
+
+fn query_has_subqueries(q: &SelectQuery) -> bool {
+    if let Some(ref wc) = q.where_clause {
+        if where_has_subquery(wc) { return true; }
+    }
+    if let ColumnList::Named(ref exprs) = q.columns {
+        for se in exprs {
+            match se {
+                SelectExpr::Expr { expr, .. } => {
+                    if expr_has_subquery(expr) { return true; }
+                }
+                SelectExpr::Aggregate { arg_expr: Some(e), .. } => {
+                    if expr_has_subquery(e) { return true; }
+                }
+                _ => {}
+            }
+        }
+    }
+    false
+}
+
+fn where_has_subquery(wc: &WhereClause) -> bool {
+    match wc {
+        WhereClause::BoolOp(bop) => where_has_subquery(&bop.left) || where_has_subquery(&bop.right),
+        WhereClause::Comparison(cmp) => {
+            cmp.left_expr.as_ref().map_or(false, |e| expr_has_subquery(e))
+                || cmp.right_expr.as_ref().map_or(false, |e| expr_has_subquery(e))
+        }
+    }
+}
+
+fn expr_has_subquery(expr: &Expr) -> bool {
+    match expr {
+        Expr::Subquery(_) => true,
+        Expr::BinaryOp { left, right, .. } => expr_has_subquery(left) || expr_has_subquery(right),
+        Expr::UnaryMinus(inner) => expr_has_subquery(inner),
+        Expr::Case { whens, else_expr } => {
+            whens.iter().any(|(c, e)| where_has_subquery(c) || expr_has_subquery(e))
+                || else_expr.as_ref().map_or(false, |e| expr_has_subquery(e))
+        }
+        _ => false,
+    }
+}
+
+pub fn materialize_subqueries(
+    query: &mut SelectQuery,
+    tables: &Tables,
+) -> crate::errors::Result<()> {
+    if let Some(ref mut wc) = query.where_clause {
+        materialize_in_where(wc, tables)?;
+    }
+    if let ColumnList::Named(ref mut exprs) = query.columns {
+        for se in exprs.iter_mut() {
+            match se {
+                SelectExpr::Expr { ref mut expr, .. } => {
+                    materialize_in_expr(expr, tables)?;
+                }
+                SelectExpr::Aggregate { ref mut arg_expr, .. } => {
+                    if let Some(ref mut e) = arg_expr {
+                        materialize_in_expr(e, tables)?;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    Ok(())
+}
+
+fn materialize_in_where(wc: &mut WhereClause, tables: &Tables) -> crate::errors::Result<()> {
+    match wc {
+        WhereClause::BoolOp(ref mut bop) => {
+            materialize_in_where(&mut bop.left, tables)?;
+            materialize_in_where(&mut bop.right, tables)?;
+        }
+        WhereClause::Comparison(ref mut cmp) => {
+            if let Some(ref mut expr) = cmp.left_expr {
+                materialize_in_expr(expr, tables)?;
+            }
+            if let Some(ref mut expr) = cmp.right_expr {
+                if let Expr::Subquery(ref sq) = expr {
+                    let (rows, _cols) = materialize_cte(sq, tables)?;
+                    if cmp.op == CmpOp::In {
+                        let values: Vec<SqlValue> = rows.iter()
+                            .filter_map(|r| r.values().next())
+                            .map(|v| value_to_sql_value(v))
+                            .collect();
+                        cmp.value = Some(SqlValue::List(values.clone()));
+                        cmp.right_expr = None;
+                    } else {
+                        let val = rows.first()
+                            .and_then(|r| r.values().next())
+                            .map(|v| value_to_sql_value(v))
+                            .unwrap_or(SqlValue::Null);
+                        *expr = Expr::Literal(val);
+                    }
+                } else {
+                    materialize_in_expr(expr, tables)?;
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn materialize_in_expr(expr: &mut Expr, tables: &Tables) -> crate::errors::Result<()> {
+    match expr {
+        Expr::Subquery(ref sq) => {
+            let (rows, _cols) = materialize_cte(sq, tables)?;
+            let val = rows.first()
+                .and_then(|r| r.values().next())
+                .map(|v| value_to_sql_value(v))
+                .unwrap_or(SqlValue::Null);
+            *expr = Expr::Literal(val);
+        }
+        Expr::BinaryOp { ref mut left, ref mut right, .. } => {
+            materialize_in_expr(left, tables)?;
+            materialize_in_expr(right, tables)?;
+        }
+        Expr::UnaryMinus(ref mut inner) => {
+            materialize_in_expr(inner, tables)?;
+        }
+        Expr::Case { ref mut whens, ref mut else_expr } => {
+            for (ref mut cond, ref mut result) in whens.iter_mut() {
+                materialize_in_where(cond, tables)?;
+                materialize_in_expr(result, tables)?;
+            }
+            if let Some(ref mut e) = else_expr {
+                materialize_in_expr(e, tables)?;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn value_to_sql_value(v: &crate::model::Value) -> SqlValue {
+    match v {
+        crate::model::Value::String(s) => SqlValue::String(s.clone()),
+        crate::model::Value::Int(n) => SqlValue::Int(*n),
+        crate::model::Value::Float(f) => SqlValue::Float(*f),
+        crate::model::Value::Bool(b) => SqlValue::Int(if *b { 1 } else { 0 }),
+        _ => SqlValue::Null,
     }
 }
 
@@ -841,6 +986,90 @@ mod tests {
         .unwrap();
         if let QueryResult::Rows { rows, .. } = result {
             assert_eq!(rows.len(), 1);
+        } else {
+            panic!("Expected Rows");
+        }
+    }
+
+    // ── Subquery integration tests ──
+
+    #[test]
+    fn test_where_in_subquery() {
+        let dir = make_join_db();
+        let (result, _) = execute(
+            dir.path(),
+            "SELECT * FROM strategies WHERE path IN (SELECT strategy FROM backtests)",
+        )
+        .unwrap();
+        if let QueryResult::Rows { rows, .. } = result {
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0].get("title"), Some(&Value::String("Alpha".into())));
+        } else {
+            panic!("Expected Rows");
+        }
+    }
+
+    fn make_multi_bt_db() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join("_mdql.md"),
+            "---\ntype: database\nname: testdb\n---\n",
+        )
+        .unwrap();
+
+        let strats = dir.path().join("strategies");
+        fs::create_dir(&strats).unwrap();
+        fs::write(
+            strats.join("_mdql.md"),
+            "---\ntype: schema\ntable: strategies\nprimary_key: path\nfrontmatter:\n  title:\n    type: string\n---\n",
+        )
+        .unwrap();
+        fs::write(strats.join("alpha.md"), "---\ntitle: Alpha\n---\n# Alpha\n").unwrap();
+        fs::write(strats.join("beta.md"), "---\ntitle: Beta\n---\n# Beta\n").unwrap();
+
+        let bt = dir.path().join("backtests");
+        fs::create_dir(&bt).unwrap();
+        fs::write(
+            bt.join("_mdql.md"),
+            "---\ntype: schema\ntable: backtests\nprimary_key: path\nfrontmatter:\n  strategy:\n    type: string\n  sharpe:\n    type: float\n---\n",
+        )
+        .unwrap();
+        fs::write(bt.join("bt-alpha.md"), "---\nstrategy: alpha.md\nsharpe: 2.0\n---\n# BT\n").unwrap();
+        fs::write(bt.join("bt-beta.md"), "---\nstrategy: beta.md\nsharpe: 0.5\n---\n# BT\n").unwrap();
+
+        dir
+    }
+
+    #[test]
+    fn test_where_scalar_subquery() {
+        let dir = make_multi_bt_db();
+        // AVG(sharpe) = (2.0 + 0.5) / 2 = 1.25 → only bt-alpha (2.0) passes
+        let (result, _) = execute(
+            dir.path(),
+            "SELECT * FROM backtests WHERE sharpe > (SELECT AVG(sharpe) FROM backtests)",
+        )
+        .unwrap();
+        if let QueryResult::Rows { rows, .. } = result {
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0].get("sharpe"), Some(&Value::Float(2.0)));
+        } else {
+            panic!("Expected Rows");
+        }
+    }
+
+    #[test]
+    fn test_select_scalar_subquery() {
+        let dir = make_join_db();
+        let (result, _) = execute(
+            dir.path(),
+            "SELECT title, (SELECT COUNT(*) FROM backtests) AS bt_count FROM strategies",
+        )
+        .unwrap();
+        if let QueryResult::Rows { rows, columns } = result {
+            assert!(columns.contains(&"bt_count".to_string()));
+            for row in &rows {
+                assert_eq!(row.get("bt_count"), Some(&Value::Int(1)));
+            }
         } else {
             panic!("Expected Rows");
         }

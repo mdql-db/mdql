@@ -727,10 +727,19 @@ impl Parser {
                 Ok(Expr::DateDiff { left: Box::new(left), right: Box::new(right) })
             }
             "op" if t.value == "(" => {
-                self.advance();
-                let expr = self.parse_additive()?;
-                self.expect("op", Some(")"))?;
-                Ok(expr)
+                let next_is_select = self.tokens.get(self.pos + 1)
+                    .map_or(false, |t| t.token_type == "keyword" && t.value == "SELECT");
+                if next_is_select {
+                    self.advance();
+                    let sq = self.parse_select()?;
+                    self.expect("op", Some(")"))?;
+                    Ok(Expr::Subquery(Box::new(sq)))
+                } else {
+                    self.advance();
+                    let expr = self.parse_additive()?;
+                    self.expect("op", Some(")"))?;
+                    Ok(expr)
+                }
             }
             "ident" => {
                 let name = self.advance().value;
@@ -880,9 +889,21 @@ impl Parser {
             }));
         }
 
-        // IN (val, val, ...)
+        // IN (val, val, ...) or IN (SELECT ...)
         if self.match_keyword("IN") {
             self.expect("op", Some("("))?;
+            let is_subquery = self.peek().map_or(false, |t| t.token_type == "keyword" && t.value == "SELECT");
+            if is_subquery {
+                let sq = self.parse_select()?;
+                self.expect("op", Some(")"))?;
+                return Ok(WhereClause::Comparison(Comparison {
+                    column: col,
+                    op: CmpOp::In,
+                    value: None,
+                    left_expr: Some(left_expr),
+                    right_expr: Some(Expr::Subquery(Box::new(sq))),
+                }));
+            }
             let mut values = vec![self.parse_value()?];
             while self.peek().map_or(false, |t| t.token_type == "op" && t.value == ",") {
                 self.advance();
@@ -2096,6 +2117,62 @@ mod tests {
         let stmt = parse_query("SELECT * FROM t").unwrap();
         if let Statement::Select(q) = stmt {
             assert!(q.ctes.is_empty());
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    // ── Subquery tests ──────────────────────────────────────────
+
+    #[test]
+    fn test_where_in_subquery() {
+        let stmt = parse_query(
+            "SELECT * FROM strategies WHERE path IN (SELECT strategy FROM backtests)"
+        ).unwrap();
+        if let Statement::Select(q) = stmt {
+            if let Some(WhereClause::Comparison(c)) = &q.where_clause {
+                assert_eq!(c.op, CmpOp::In);
+                assert!(matches!(&c.right_expr, Some(Expr::Subquery(_))));
+            } else {
+                panic!("Expected IN comparison");
+            }
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_scalar_subquery_in_where() {
+        let stmt = parse_query(
+            "SELECT * FROM backtests WHERE sharpe > (SELECT AVG(sharpe) FROM backtests)"
+        ).unwrap();
+        if let Statement::Select(q) = stmt {
+            if let Some(WhereClause::Comparison(c)) = &q.where_clause {
+                assert_eq!(c.op, CmpOp::Gt);
+                assert!(matches!(&c.right_expr, Some(Expr::Subquery(_))));
+            } else {
+                panic!("Expected comparison");
+            }
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_scalar_subquery_in_select() {
+        let stmt = parse_query(
+            "SELECT title, (SELECT COUNT(*) FROM backtests) AS cnt FROM strategies"
+        ).unwrap();
+        if let Statement::Select(q) = stmt {
+            if let ColumnList::Named(exprs) = &q.columns {
+                assert_eq!(exprs.len(), 2);
+                assert!(matches!(&exprs[1], SelectExpr::Expr {
+                    expr: Expr::Subquery(_),
+                    alias: Some(a),
+                } if a == "cnt"));
+            } else {
+                panic!("Expected Named columns");
+            }
         } else {
             panic!("Expected Select");
         }

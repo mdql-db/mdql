@@ -23,6 +23,7 @@ pub enum Expr {
     CurrentDate,
     CurrentTimestamp,
     Aggregate { func: AggFunc, arg: String, arg_expr: Option<Box<Expr>> },
+    Subquery(Box<SelectQuery>),
 }
 
 impl Expr {
@@ -64,6 +65,7 @@ impl Expr {
                 };
                 format!("{}({})", func_name, arg)
             }
+            Expr::Subquery(_) => "(subquery)".to_string(),
         }
     }
 
@@ -78,6 +80,7 @@ impl Expr {
                 whens.iter().any(|(_, e)| e.contains_aggregate())
                     || else_expr.as_ref().map_or(false, |e| e.contains_aggregate())
             }
+            Expr::Subquery(_) => false,
             _ => false,
         }
     }

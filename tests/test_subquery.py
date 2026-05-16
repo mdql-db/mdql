@@ -101,3 +101,69 @@ class TestSubqueryWithOrderAndLimit:
             "SELECT * FROM (SELECT name, price FROM products ORDER BY price DESC LIMIT 2)"
         )
         assert len(rows) == 2
+
+
+class TestWhereInSubquery:
+    def test_where_in_subquery_basic(self, db):
+        rows, _ = db.query(
+            "SELECT name FROM products WHERE category IN (SELECT category FROM products WHERE price > 150)"
+        )
+        names = {r["name"] for r in rows}
+        assert names == {"Widget A", "Widget B"}
+
+    def test_where_in_subquery_no_matches(self, db):
+        rows, _ = db.query(
+            "SELECT name FROM products WHERE category IN (SELECT category FROM products WHERE price > 999)"
+        )
+        assert len(rows) == 0
+
+    def test_where_in_subquery_all_match(self, db):
+        rows, _ = db.query(
+            "SELECT name FROM products WHERE category IN (SELECT category FROM products)"
+        )
+        assert len(rows) == 4
+
+
+class TestWhereScalarSubquery:
+    def test_where_gt_scalar_subquery(self, db):
+        rows, _ = db.query(
+            "SELECT name FROM products WHERE price > (SELECT AVG(price) FROM products)"
+        )
+        names = {r["name"] for r in rows}
+        assert names == {"Widget B"}
+
+    def test_where_lt_scalar_subquery(self, db):
+        rows, _ = db.query(
+            "SELECT name FROM products WHERE price < (SELECT AVG(price) FROM products)"
+        )
+        names = {r["name"] for r in rows}
+        assert names == {"Gadget X", "Gadget Y", "Widget A"}
+
+    def test_where_eq_scalar_subquery(self, db):
+        rows, _ = db.query(
+            "SELECT name FROM products WHERE price = (SELECT MIN(price) FROM products)"
+        )
+        assert len(rows) == 1
+        assert rows[0]["name"] == "Gadget X"
+
+    def test_where_ge_scalar_subquery(self, db):
+        rows, _ = db.query(
+            "SELECT name FROM products WHERE price >= (SELECT MAX(price) FROM products)"
+        )
+        assert len(rows) == 1
+        assert rows[0]["name"] == "Widget B"
+
+
+class TestSelectSubquery:
+    def test_scalar_subquery_in_select(self, db):
+        rows, cols = db.query(
+            "SELECT name, (SELECT COUNT(*) FROM products) as total FROM products LIMIT 1"
+        )
+        assert rows[0]["total"] == 4
+
+    def test_scalar_subquery_in_select_aggregate(self, db):
+        rows, cols = db.query(
+            "SELECT name, (SELECT MAX(price) FROM products) as max_price FROM products WHERE name = 'Gadget X'"
+        )
+        assert len(rows) == 1
+        assert rows[0]["max_price"] == 200

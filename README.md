@@ -2,7 +2,7 @@
 
 A database where every entry is a markdown file and every change is a readable diff.
 
-MDQL turns folders of markdown files into a schema-validated, queryable database. Frontmatter fields are metadata columns. H2 sections are content columns. The files are the database — there is nothing else. Every file reads like a normal markdown document, but you get full SQL: SELECT, INSERT, UPDATE, DELETE, JOINs across multiple tables, CTEs, views, ORDER BY, aggregation, computed expressions, and CASE WHEN.
+MDQL turns folders of markdown files into a schema-validated, queryable database. Frontmatter fields are metadata columns. H2 sections are content columns. The files are the database — there is nothing else. Every file reads like a normal markdown document, but you get full SQL: SELECT, INSERT, UPDATE, DELETE, JOINs across multiple tables, CTEs, subqueries, views, ORDER BY, aggregation, computed expressions, and CASE WHEN.
 
 Your database lives in git. Every insert, update, and migration is a readable diff. Branching, merging, and rollback come free.
 
@@ -285,6 +285,36 @@ rows, columns = db.query(
 ```
 
 CTEs require a database directory. A CTE can shadow a physical table name — the CTE version takes precedence within the query.
+
+## Subqueries
+
+Subqueries work in WHERE clauses (both IN and scalar comparisons), SELECT expressions, and FROM position (derived tables).
+
+```bash
+# WHERE IN subquery — filter rows based on another query's results
+mdql query examples/ "SELECT title FROM strategies WHERE status IN (SELECT status FROM strategies WHERE composite > 400)"
+
+# WHERE scalar subquery — compare against a single value
+mdql query examples/ "SELECT title, sharpe FROM backtests WHERE sharpe > (SELECT AVG(sharpe) FROM backtests)"
+
+# FROM subquery (derived table) — use a query result as the source table
+mdql query examples/ "SELECT title FROM (SELECT title, composite FROM strategies WHERE status = 'LIVE') ORDER BY composite DESC LIMIT 5"
+```
+
+```python
+# Python API — WHERE IN subquery
+rows, columns = db.query(
+    "SELECT name FROM products "
+    "WHERE category IN (SELECT category FROM products WHERE price > 150)"
+)
+
+# Scalar subquery in SELECT
+rows, columns = db.query(
+    "SELECT name, (SELECT MAX(price) FROM products) as max_price FROM products"
+)
+```
+
+Subqueries are pre-materialized: they execute first and their results replace the subquery node with literal values before the outer query runs.
 
 ## Python API
 

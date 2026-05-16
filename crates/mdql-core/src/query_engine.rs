@@ -575,6 +575,7 @@ pub(crate) fn evaluate_expr(expr: &Expr, row: &Row) -> Value {
             let col = format!("{}({})", func_name, arg);
             row.get(&col).cloned().unwrap_or(Value::Null)
         }
+        Expr::Subquery(_) => Value::Null,
     }
 }
 

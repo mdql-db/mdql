@@ -768,6 +768,10 @@ impl PyDatabase {
             tables.insert(cte.name.clone(), (schema, cte_rows));
         }
 
+        let mut select = select;
+        mdql_core::executor::materialize_subqueries(&mut select, &tables)
+            .map_err(mdql_to_py_err)?;
+
         let (result_rows, columns) = if let Some(ref sub) = select.subquery {
             let (schema, table_rows) = tables
                 .get(&sub.table)
