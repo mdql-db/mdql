@@ -17,6 +17,7 @@ static KEYWORDS: &[&str] = &[
     "CASE", "WHEN", "THEN", "ELSE", "END",
     "INTERVAL", "DAY", "DAYS", "CURRENT_DATE", "CURRENT_TIMESTAMP", "DATEDIFF",
     "CREATE", "VIEW", "CASCADE", "RESTRICT",
+    "WITH",
 ];
 
 static AGG_FUNCS: &[&str] = &["COUNT", "SUM", "AVG", "MIN", "MAX"];
@@ -148,6 +149,13 @@ impl Parser {
     fn parse_statement(&mut self) -> Result<Statement, MdqlError> {
         let t = self.peek().ok_or_else(|| MdqlError::QueryParse("Empty query".into()))?;
         match (t.token_type.as_str(), t.value.as_str()) {
+            ("keyword", "WITH") => {
+                let ctes = self.parse_ctes()?;
+                let mut q = self.parse_select()?;
+                q.ctes = ctes;
+                self.expect_end()?;
+                Ok(Statement::Select(q))
+            }
             ("keyword", "SELECT") => {
                 let q = self.parse_select()?;
                 self.expect_end()?;
@@ -164,6 +172,24 @@ impl Parser {
                 t.raw
             ))),
         }
+    }
+
+    fn parse_ctes(&mut self) -> Result<Vec<CteClause>, MdqlError> {
+        self.expect("keyword", Some("WITH"))?;
+        let mut ctes = Vec::new();
+        loop {
+            let name = self.parse_ident()?;
+            self.expect("keyword", Some("AS"))?;
+            self.expect("op", Some("("))?;
+            let query = self.parse_select()?;
+            self.expect("op", Some(")"))?;
+            ctes.push(CteClause { name, query: Box::new(query) });
+            if !self.peek().map_or(false, |t| t.token_type == "op" && t.value == ",") {
+                break;
+            }
+            self.advance();
+        }
+        Ok(ctes)
     }
 
     fn parse_select(&mut self) -> Result<SelectQuery, MdqlError> {
@@ -276,6 +302,7 @@ impl Parser {
             having,
             order_by,
             limit,
+            ctes: vec![],
         })
     }
 
@@ -1010,6 +1037,7 @@ impl Parser {
             | "HAVING" | "INTERVAL" | "DAY" | "DAYS"
             | "CURRENT_DATE" | "CURRENT_TIMESTAMP" | "DATEDIFF"
             | "CREATE" | "VIEW" | "CASCADE" | "RESTRICT"
+            | "WITH"
         )
     }
 
@@ -2008,6 +2036,68 @@ mod tests {
             assert_eq!(q.mode, DeleteMode::Cascade);
         } else {
             panic!("Expected Delete");
+        }
+    }
+
+    // ── CTE (WITH) tests ──────────────────────────────────────────
+
+    #[test]
+    fn test_cte_basic() {
+        let stmt = parse_query(
+            "WITH live AS (SELECT * FROM strategies WHERE status = 'LIVE') SELECT * FROM live"
+        ).unwrap();
+        if let Statement::Select(q) = stmt {
+            assert_eq!(q.ctes.len(), 1);
+            assert_eq!(q.ctes[0].name, "live");
+            assert_eq!(q.ctes[0].query.table, "strategies");
+            assert!(q.ctes[0].query.where_clause.is_some());
+            assert_eq!(q.table, "live");
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_cte_multi() {
+        let stmt = parse_query(
+            "WITH a AS (SELECT * FROM t1), b AS (SELECT * FROM t2) SELECT * FROM a JOIN b ON a.id = b.id"
+        ).unwrap();
+        if let Statement::Select(q) = stmt {
+            assert_eq!(q.ctes.len(), 2);
+            assert_eq!(q.ctes[0].name, "a");
+            assert_eq!(q.ctes[0].query.table, "t1");
+            assert_eq!(q.ctes[1].name, "b");
+            assert_eq!(q.ctes[1].query.table, "t2");
+            assert_eq!(q.table, "a");
+            assert_eq!(q.joins.len(), 1);
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_cte_with_aggregation() {
+        let stmt = parse_query(
+            "WITH totals AS (SELECT strategy, COUNT(*) AS cnt FROM backtests GROUP BY strategy) SELECT * FROM totals WHERE cnt > 1"
+        ).unwrap();
+        if let Statement::Select(q) = stmt {
+            assert_eq!(q.ctes.len(), 1);
+            assert_eq!(q.ctes[0].name, "totals");
+            assert!(q.ctes[0].query.group_by.is_some());
+            assert_eq!(q.table, "totals");
+            assert!(q.where_clause.is_some());
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_cte_no_ctes_on_plain_select() {
+        let stmt = parse_query("SELECT * FROM t").unwrap();
+        if let Statement::Select(q) = stmt {
+            assert!(q.ctes.is_empty());
+        } else {
+            panic!("Expected Select");
         }
     }
 }

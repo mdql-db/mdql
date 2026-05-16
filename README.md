@@ -2,7 +2,7 @@
 
 A database where every entry is a markdown file and every change is a readable diff.
 
-MDQL turns folders of markdown files into a schema-validated, queryable database. Frontmatter fields are metadata columns. H2 sections are content columns. The files are the database — there is nothing else. Every file reads like a normal markdown document, but you get full SQL: SELECT, INSERT, UPDATE, DELETE, JOINs across multiple tables, ORDER BY, aggregation, computed expressions, and CASE WHEN.
+MDQL turns folders of markdown files into a schema-validated, queryable database. Frontmatter fields are metadata columns. H2 sections are content columns. The files are the database — there is nothing else. Every file reads like a normal markdown document, but you get full SQL: SELECT, INSERT, UPDATE, DELETE, JOINs across multiple tables, CTEs, views, ORDER BY, aggregation, computed expressions, and CASE WHEN.
 
 Your database lives in git. Every insert, update, and migration is a readable diff. Branching, merging, and rollback come free.
 
@@ -257,6 +257,34 @@ mdql schema examples/
 # Views:
 #   live = SELECT * FROM strategies WHERE status = 'LIVE'
 ```
+
+## CTEs (Common Table Expressions)
+
+Use `WITH ... AS` to define temporary named result sets within a query. CTEs are materialized in order, so later CTEs can reference earlier ones.
+
+```bash
+# Single CTE
+mdql query examples/ "WITH live AS (SELECT * FROM strategies WHERE status = 'LIVE') SELECT * FROM live ORDER BY title"
+
+# Multiple CTEs with JOIN
+mdql query examples/ "WITH s AS (SELECT * FROM strategies WHERE status = 'LIVE'), b AS (SELECT * FROM backtests WHERE sharpe > 1.0) SELECT s.title, b.sharpe FROM s JOIN b ON b.strategy = s.path"
+
+# Chained CTEs — second CTE references the first
+mdql query examples/ "WITH good AS (SELECT * FROM backtests WHERE sharpe > 1.0), matched AS (SELECT s.title, g.sharpe FROM strategies s JOIN good g ON g.strategy = s.path) SELECT * FROM matched"
+
+# CTE with aggregation
+mdql query examples/ "WITH counts AS (SELECT status, COUNT(*) AS cnt FROM strategies GROUP BY status) SELECT * FROM counts WHERE cnt > 1"
+```
+
+```python
+# Python API
+rows, columns = db.query(
+    "WITH live AS (SELECT * FROM strategies WHERE status = 'LIVE') "
+    "SELECT * FROM live ORDER BY title"
+)
+```
+
+CTEs require a database directory. A CTE can shadow a physical table name — the CTE version takes precedence within the query.
 
 ## Python API
 

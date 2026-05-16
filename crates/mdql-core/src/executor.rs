@@ -22,6 +22,31 @@ pub fn execute(path: &Path, sql: &str) -> crate::errors::Result<(QueryResult, Ve
     let is_db = is_database_dir(path);
 
     match stmt {
+        Statement::Select(ref q) if !q.ctes.is_empty() => {
+            if !is_db {
+                return Err(MdqlError::QueryExecution(
+                    "CTEs (WITH) require a database directory".into(),
+                ));
+            }
+            let (_config, mut tables, errors) = crate::loader::load_database(path)?;
+            for cte in &q.ctes {
+                let (rows, cols) = materialize_cte(&cte.query, &tables)?;
+                let schema = crate::loader::build_view_schema(&cte.name, &cols, &rows);
+                tables.insert(cte.name.clone(), (schema, rows));
+            }
+            let (rows, cols) = if !q.joins.is_empty() {
+                execute_join_query(q, &tables)?
+            } else {
+                let (schema, rows) = tables.get(&q.table).ok_or_else(|| {
+                    MdqlError::QueryExecution(format!(
+                        "table '{}' not found in database",
+                        q.table
+                    ))
+                })?;
+                execute_query(q, rows, schema)?
+            };
+            Ok((QueryResult::Rows { rows, columns: cols }, errors))
+        }
         Statement::Select(ref q) => {
             if q.subquery.is_some() || !q.joins.is_empty() || is_db {
                 let (_config, tables, errors) = crate::loader::load_database(path)?;
@@ -205,6 +230,26 @@ pub fn execute(path: &Path, sql: &str) -> crate::errors::Result<(QueryResult, Ve
             let msg = table.execute_sql(sql)?;
             Ok((QueryResult::Message(msg), vec![]))
         }
+    }
+}
+
+pub fn materialize_cte(
+    query: &crate::query_ast::SelectQuery,
+    tables: &std::collections::HashMap<String, (crate::schema::Schema, Vec<Row>)>,
+) -> crate::errors::Result<(Vec<Row>, Vec<String>)> {
+    if let Some(ref sub) = query.subquery {
+        let (_, sub_rows) = tables.get(&sub.table).ok_or_else(|| {
+            MdqlError::QueryExecution(format!("table '{}' not found in database", sub.table))
+        })?;
+        let (sub_rows, _) = execute_query(sub, sub_rows, &tables.get(&sub.table).unwrap().0)?;
+        execute_query(query, &sub_rows, &tables.get(&sub.table).unwrap().0)
+    } else if !query.joins.is_empty() {
+        execute_join_query(query, tables)
+    } else {
+        let (schema, rows) = tables.get(&query.table).ok_or_else(|| {
+            MdqlError::QueryExecution(format!("table '{}' not found in database", query.table))
+        })?;
+        execute_query(query, rows, schema)
     }
 }
 
@@ -716,5 +761,88 @@ mod tests {
         }
         assert!(!dir.path().join("strategies/alpha.md").exists());
         assert!(dir.path().join("backtests/bt-alpha.md").exists());
+    }
+
+    // ── CTE (WITH) integration tests ──
+
+    #[test]
+    fn test_cte_basic() {
+        let dir = make_test_db();
+        let (result, _) = execute(
+            dir.path(),
+            "WITH live AS (SELECT * FROM strategies WHERE status = 'LIVE') SELECT * FROM live",
+        )
+        .unwrap();
+        if let QueryResult::Rows { rows, columns } = result {
+            assert_eq!(rows.len(), 1);
+            assert!(columns.contains(&"title".to_string()));
+            assert_eq!(rows[0].get("title"), Some(&Value::String("Alpha".into())));
+        } else {
+            panic!("Expected Rows");
+        }
+    }
+
+    #[test]
+    fn test_cte_with_where_on_cte() {
+        let dir = make_join_db();
+        let (result, _) = execute(
+            dir.path(),
+            "WITH bt AS (SELECT * FROM backtests WHERE sharpe > 1.0) SELECT * FROM bt",
+        )
+        .unwrap();
+        if let QueryResult::Rows { rows, .. } = result {
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0].get("sharpe"), Some(&Value::Float(1.5)));
+        } else {
+            panic!("Expected Rows");
+        }
+    }
+
+    #[test]
+    fn test_cte_multi_with_join() {
+        let dir = make_join_db();
+        let (result, _) = execute(
+            dir.path(),
+            "WITH s AS (SELECT * FROM strategies), b AS (SELECT * FROM backtests) SELECT s.title, b.sharpe FROM s JOIN b ON b.strategy = s.path",
+        )
+        .unwrap();
+        if let QueryResult::Rows { rows, .. } = result {
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0].get("s.title"), Some(&Value::String("Alpha".into())));
+        } else {
+            panic!("Expected Rows");
+        }
+    }
+
+    #[test]
+    fn test_cte_with_aggregation() {
+        let dir = make_test_db();
+        let (result, _) = execute(
+            dir.path(),
+            "WITH counts AS (SELECT status, COUNT(*) AS cnt FROM strategies GROUP BY status) SELECT * FROM counts WHERE cnt > 0",
+        )
+        .unwrap();
+        if let QueryResult::Rows { rows, columns } = result {
+            assert!(columns.contains(&"status".to_string()));
+            assert!(columns.contains(&"cnt".to_string()));
+            assert!(rows.len() >= 1);
+        } else {
+            panic!("Expected Rows");
+        }
+    }
+
+    #[test]
+    fn test_cte_chained() {
+        let dir = make_join_db();
+        let (result, _) = execute(
+            dir.path(),
+            "WITH good AS (SELECT * FROM backtests WHERE sharpe > 1.0), matched AS (SELECT s.title, g.sharpe FROM strategies s JOIN good g ON g.strategy = s.path) SELECT * FROM matched",
+        )
+        .unwrap();
+        if let QueryResult::Rows { rows, .. } = result {
+            assert_eq!(rows.len(), 1);
+        } else {
+            panic!("Expected Rows");
+        }
     }
 }

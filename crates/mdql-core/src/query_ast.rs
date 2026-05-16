@@ -206,6 +206,12 @@ impl SelectExpr {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct CteClause {
+    pub name: String,
+    pub query: Box<SelectQuery>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct SelectQuery {
     pub columns: ColumnList,
     pub table: String,
@@ -217,6 +223,7 @@ pub struct SelectQuery {
     pub having: Option<WhereClause>,
     pub order_by: Option<Vec<OrderSpec>>,
     pub limit: Option<i64>,
+    pub ctes: Vec<CteClause>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

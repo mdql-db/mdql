@@ -249,7 +249,7 @@ pub fn materialize_view(
     Ok((schema, rows))
 }
 
-fn build_view_schema(
+pub fn build_view_schema(
     name: &str,
     columns: &[String],
     rows: &[crate::model::Row],

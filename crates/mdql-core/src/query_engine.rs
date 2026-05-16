@@ -1026,6 +1026,7 @@ mod tests {
             having: None,
             order_by: None,
             limit: None,
+            ctes: vec![],
         };
         let (rows, _cols) = execute_inner(&q, &make_rows(), None).unwrap();
         assert_eq!(rows.len(), 3);
@@ -1050,6 +1051,7 @@ mod tests {
             having: None,
             order_by: None,
             limit: None,
+            ctes: vec![],
         };
         let (rows, _) = execute_inner(&q, &make_rows(), None).unwrap();
         assert_eq!(rows.len(), 2);
@@ -1072,6 +1074,7 @@ mod tests {
                 descending: true,
             }]),
             limit: None,
+            ctes: vec![],
         };
         let (rows, _) = execute_inner(&q, &make_rows(), None).unwrap();
         assert_eq!(rows[0]["count"], Value::Int(20));
@@ -1091,6 +1094,7 @@ mod tests {
             having: None,
             order_by: None,
             limit: Some(2),
+            ctes: vec![],
         };
         let (rows, _) = execute_inner(&q, &make_rows(), None).unwrap();
         assert_eq!(rows.len(), 2);
@@ -1115,6 +1119,7 @@ mod tests {
             having: None,
             order_by: None,
             limit: None,
+            ctes: vec![],
         };
         let (rows, _) = execute_inner(&q, &make_rows(), None).unwrap();
         assert_eq!(rows.len(), 1);
@@ -1143,6 +1148,7 @@ mod tests {
             having: None,
             order_by: None,
             limit: None,
+            ctes: vec![],
         };
         let (result, _) = execute_inner(&q, &rows, None).unwrap();
         // All rows where optional is NULL or missing
@@ -1442,6 +1448,7 @@ mod tests {
             having: None,
             order_by: None,
             limit: None,
+            ctes: vec![],
         };
 
         let (rows, cols) = execute_inner(&q, &rows, None).unwrap();

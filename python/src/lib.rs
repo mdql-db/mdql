@@ -757,9 +757,16 @@ impl PyDatabase {
             _ => return Err(PyValueError::new_err("Only SELECT queries supported")),
         };
 
-        let (_config, tables, _errors) =
+        let (_config, mut tables, _errors) =
             mdql_core::loader::load_database(&self.inner.path)
                 .map_err(mdql_to_py_err)?;
+
+        for cte in &select.ctes {
+            let (cte_rows, cte_cols) = mdql_core::executor::materialize_cte(&cte.query, &tables)
+                .map_err(mdql_to_py_err)?;
+            let schema = mdql_core::loader::build_view_schema(&cte.name, &cte_cols, &cte_rows);
+            tables.insert(cte.name.clone(), (schema, cte_rows));
+        }
 
         let (result_rows, columns) = if let Some(ref sub) = select.subquery {
             let (schema, table_rows) = tables
