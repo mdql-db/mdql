@@ -24,6 +24,7 @@ pub enum Expr {
     CurrentTimestamp,
     Aggregate { func: AggFunc, arg: String, arg_expr: Option<Box<Expr>> },
     Subquery(Box<SelectQuery>),
+    Window { func: WindowFunc, args: Vec<Expr>, over: WindowSpec },
 }
 
 impl Expr {
@@ -66,6 +67,28 @@ impl Expr {
                 format!("{}({})", func_name, arg)
             }
             Expr::Subquery(_) => "(subquery)".to_string(),
+            Expr::Window { func, args, .. } => {
+                let func_name = match func {
+                    WindowFunc::RowNumber => "ROW_NUMBER",
+                    WindowFunc::Rank => "RANK",
+                    WindowFunc::DenseRank => "DENSE_RANK",
+                    WindowFunc::Lag => "LAG",
+                    WindowFunc::Lead => "LEAD",
+                    WindowFunc::Agg(af) => match af {
+                        AggFunc::Count => "COUNT",
+                        AggFunc::Sum => "SUM",
+                        AggFunc::Avg => "AVG",
+                        AggFunc::Min => "MIN",
+                        AggFunc::Max => "MAX",
+                    },
+                };
+                if args.is_empty() {
+                    format!("{}()", func_name)
+                } else {
+                    let arg_strs: Vec<String> = args.iter().map(|a| a.display_name()).collect();
+                    format!("{}({})", func_name, arg_strs.join(", "))
+                }
+            }
         }
     }
 
@@ -81,6 +104,18 @@ impl Expr {
                     || else_expr.as_ref().map_or(false, |e| e.contains_aggregate())
             }
             Expr::Subquery(_) => false,
+            Expr::Window { .. } => false,
+            _ => false,
+        }
+    }
+
+    pub fn contains_window(&self) -> bool {
+        match self {
+            Expr::Window { .. } => true,
+            Expr::BinaryOp { left, right, .. } => {
+                left.contains_window() || right.contains_window()
+            }
+            Expr::UnaryMinus(inner) => inner.contains_window(),
             _ => false,
         }
     }
@@ -166,6 +201,22 @@ pub enum AggFunc {
     Avg,
     Min,
     Max,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum WindowFunc {
+    RowNumber,
+    Rank,
+    DenseRank,
+    Lag,
+    Lead,
+    Agg(AggFunc),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct WindowSpec {
+    pub partition_by: Vec<String>,
+    pub order_by: Vec<OrderSpec>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

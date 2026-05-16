@@ -153,6 +153,20 @@ fn execute_with_fts(
         result.retain(|row| evaluate(having, row));
     }
 
+    // Window functions — compute after aggregation/HAVING, before ORDER BY
+    let has_windows = match &query.columns {
+        ColumnList::Named(exprs) => exprs.iter().any(|e| match e {
+            SelectExpr::Expr { expr, .. } => expr.contains_window(),
+            _ => false,
+        }),
+        _ => false,
+    };
+    if has_windows {
+        if let ColumnList::Named(ref exprs) = query.columns {
+            compute_windows(&mut result, exprs)?;
+        }
+    }
+
     // Sort — resolve ORDER BY aliases against SELECT list
     if let Some(ref order_by) = query.order_by {
         let resolved = resolve_order_aliases(order_by, &query.columns);
@@ -180,6 +194,7 @@ fn execute_with_fts(
             for row in &mut result {
                 for expr in named_exprs {
                     if let SelectExpr::Expr { expr: e, alias } = expr {
+                        if e.contains_window() { continue; }
                         let name = alias.clone().unwrap_or_else(|| e.display_name());
                         let val = evaluate_expr(e, row);
                         row.insert(name, val);
@@ -374,6 +389,180 @@ fn compute_aggregate(func: &AggFunc, arg: &str, arg_expr: Option<&Expr>, rows: &
             max_val.unwrap_or(Value::Null)
         }
     }
+}
+
+fn compute_windows(rows: &mut Vec<Row>, select_exprs: &[SelectExpr]) -> crate::errors::Result<()> {
+    for se in select_exprs {
+        if let SelectExpr::Expr { expr, alias } = se {
+            if let Expr::Window { func, args, over } = expr {
+                let col_name = alias.clone().unwrap_or_else(|| expr.display_name());
+                compute_single_window(rows, func, args, over, &col_name)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn compute_single_window(
+    rows: &mut Vec<Row>,
+    func: &WindowFunc,
+    args: &[Expr],
+    over: &WindowSpec,
+    col_name: &str,
+) -> crate::errors::Result<()> {
+    let mut partitions: Vec<Vec<usize>> = Vec::new();
+    let mut partition_map: HashMap<Vec<String>, usize> = HashMap::new();
+
+    for (i, row) in rows.iter().enumerate() {
+        let key: Vec<String> = over.partition_by.iter()
+            .map(|col| row.get(col).map(|v| v.to_display_string()).unwrap_or_default())
+            .collect();
+        if let Some(&idx) = partition_map.get(&key) {
+            partitions[idx].push(i);
+        } else {
+            let idx = partitions.len();
+            partition_map.insert(key, idx);
+            partitions.push(vec![i]);
+        }
+    }
+
+    for partition in &mut partitions {
+        if !over.order_by.is_empty() {
+            partition.sort_by(|&a, &b| {
+                for spec in &over.order_by {
+                    let (va, vb) = if let Some(ref expr) = spec.expr {
+                        (evaluate_expr(expr, &rows[a]), evaluate_expr(expr, &rows[b]))
+                    } else {
+                        (
+                            rows[a].get(&spec.column).cloned().unwrap_or(Value::Null),
+                            rows[b].get(&spec.column).cloned().unwrap_or(Value::Null),
+                        )
+                    };
+                    let ordering = match (&va, &vb) {
+                        (Value::Null, Value::Null) => Ordering::Equal,
+                        (Value::Null, _) => Ordering::Greater,
+                        (_, Value::Null) => Ordering::Less,
+                        (a_val, b_val) => compare_model_values(a_val, b_val).unwrap_or(Ordering::Equal),
+                    };
+                    let ordering = if spec.descending { ordering.reverse() } else { ordering };
+                    if ordering != Ordering::Equal {
+                        return ordering;
+                    }
+                }
+                Ordering::Equal
+            });
+        }
+    }
+
+    let mut values: Vec<(usize, Value)> = Vec::new();
+
+    for partition in &partitions {
+        match func {
+            WindowFunc::RowNumber => {
+                for (i, &row_idx) in partition.iter().enumerate() {
+                    values.push((row_idx, Value::Int((i + 1) as i64)));
+                }
+            }
+            WindowFunc::Rank => {
+                let mut rank = 1usize;
+                for (i, &row_idx) in partition.iter().enumerate() {
+                    if i > 0 {
+                        let prev_idx = partition[i - 1];
+                        let same = over.order_by.iter().all(|spec| {
+                            let va = if let Some(ref expr) = spec.expr {
+                                evaluate_expr(expr, &rows[prev_idx])
+                            } else {
+                                rows[prev_idx].get(&spec.column).cloned().unwrap_or(Value::Null)
+                            };
+                            let vb = if let Some(ref expr) = spec.expr {
+                                evaluate_expr(expr, &rows[row_idx])
+                            } else {
+                                rows[row_idx].get(&spec.column).cloned().unwrap_or(Value::Null)
+                            };
+                            va == vb
+                        });
+                        if !same {
+                            rank = i + 1;
+                        }
+                    }
+                    values.push((row_idx, Value::Int(rank as i64)));
+                }
+            }
+            WindowFunc::DenseRank => {
+                let mut rank = 1usize;
+                for (i, &row_idx) in partition.iter().enumerate() {
+                    if i > 0 {
+                        let prev_idx = partition[i - 1];
+                        let same = over.order_by.iter().all(|spec| {
+                            let va = if let Some(ref expr) = spec.expr {
+                                evaluate_expr(expr, &rows[prev_idx])
+                            } else {
+                                rows[prev_idx].get(&spec.column).cloned().unwrap_or(Value::Null)
+                            };
+                            let vb = if let Some(ref expr) = spec.expr {
+                                evaluate_expr(expr, &rows[row_idx])
+                            } else {
+                                rows[row_idx].get(&spec.column).cloned().unwrap_or(Value::Null)
+                            };
+                            va == vb
+                        });
+                        if !same {
+                            rank += 1;
+                        }
+                    }
+                    values.push((row_idx, Value::Int(rank as i64)));
+                }
+            }
+            WindowFunc::Lag => {
+                let offset = if args.len() > 1 {
+                    if let Expr::Literal(SqlValue::Int(n)) = &args[1] { *n as usize } else { 1 }
+                } else {
+                    1
+                };
+                for (i, &row_idx) in partition.iter().enumerate() {
+                    let val = if i >= offset && !args.is_empty() {
+                        evaluate_expr(&args[0], &rows[partition[i - offset]])
+                    } else {
+                        Value::Null
+                    };
+                    values.push((row_idx, val));
+                }
+            }
+            WindowFunc::Lead => {
+                let offset = if args.len() > 1 {
+                    if let Expr::Literal(SqlValue::Int(n)) = &args[1] { *n as usize } else { 1 }
+                } else {
+                    1
+                };
+                for (i, &row_idx) in partition.iter().enumerate() {
+                    let val = if i + offset < partition.len() && !args.is_empty() {
+                        evaluate_expr(&args[0], &rows[partition[i + offset]])
+                    } else {
+                        Value::Null
+                    };
+                    values.push((row_idx, val));
+                }
+            }
+            WindowFunc::Agg(agg_func) => {
+                let partition_rows: Vec<&Row> = partition.iter().map(|&i| &rows[i]).collect();
+                let (arg_name, arg_expr_opt) = if args.is_empty() {
+                    ("*".to_string(), None)
+                } else {
+                    (args[0].display_name(), Some(&args[0]))
+                };
+                let agg_val = compute_aggregate(agg_func, &arg_name, arg_expr_opt, &partition_rows);
+                for &row_idx in partition {
+                    values.push((row_idx, agg_val.clone()));
+                }
+            }
+        }
+    }
+
+    for (row_idx, val) in values {
+        rows[row_idx].insert(col_name.to_string(), val);
+    }
+
+    Ok(())
 }
 
 fn evaluate_with_fts(clause: &WhereClause, row: &Row, fts: &FtsResults) -> bool {
@@ -576,6 +765,10 @@ pub(crate) fn evaluate_expr(expr: &Expr, row: &Row) -> Value {
             row.get(&col).cloned().unwrap_or(Value::Null)
         }
         Expr::Subquery(_) => Value::Null,
+        Expr::Window { .. } => {
+            let display = expr.display_name();
+            row.get(&display).cloned().unwrap_or(Value::Null)
+        }
     }
 }
 
@@ -908,11 +1101,13 @@ fn resolve_order_aliases(specs: &[OrderSpec], columns: &ColumnList) -> Vec<Order
         _ => return specs.to_vec(),
     };
 
-    // Build alias → expr map
+    // Build alias → expr map (skip window exprs — their values are already in rows)
     let alias_map: HashMap<String, &Expr> = named
         .iter()
         .filter_map(|se| match se {
-            SelectExpr::Expr { expr, alias: Some(a) } => Some((a.clone(), expr)),
+            SelectExpr::Expr { expr, alias: Some(a) } if !expr.contains_window() => {
+                Some((a.clone(), expr))
+            }
             _ => None,
         })
         .collect();
@@ -1576,6 +1771,160 @@ mod tests {
                 Value::Float(f) => assert!((f - 6.0).abs() < 0.001),
                 other => panic!("Expected Float for group B ratio, got {:?}", other),
             }
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    // ── Window function tests ────────────────────────────────────
+
+    #[test]
+    fn test_window_row_number() {
+        let stmt = crate::query_parser::parse_query(
+            "SELECT title, ROW_NUMBER() OVER (ORDER BY count DESC) AS rn FROM test"
+        ).unwrap();
+        if let crate::query_parser::Statement::Select(q) = stmt {
+            let (rows, cols) = execute_inner(&q, &make_rows(), None).unwrap();
+            assert_eq!(cols, vec!["title", "rn"]);
+            assert_eq!(rows.len(), 3);
+            let by_title: HashMap<String, i64> = rows.iter()
+                .map(|r| (r["title"].to_display_string(), match &r["rn"] { Value::Int(n) => *n, _ => panic!("Expected Int") }))
+                .collect();
+            assert_eq!(by_title["Gamma"], 1); // count=20
+            assert_eq!(by_title["Alpha"], 2); // count=10
+            assert_eq!(by_title["Beta"], 3);  // count=5
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_window_rank_with_ties() {
+        let mut rows = make_rows();
+        rows[0].insert("count".into(), Value::Int(10));
+        rows[1].insert("count".into(), Value::Int(10));
+        rows[2].insert("count".into(), Value::Int(5));
+
+        let stmt = crate::query_parser::parse_query(
+            "SELECT title, RANK() OVER (ORDER BY count DESC) AS rnk FROM test"
+        ).unwrap();
+        if let crate::query_parser::Statement::Select(q) = stmt {
+            let (result, _) = execute_inner(&q, &rows, None).unwrap();
+            let ranks: Vec<i64> = result.iter()
+                .map(|r| match &r["rnk"] { Value::Int(n) => *n, _ => panic!("Expected Int") })
+                .collect();
+            assert!(ranks.contains(&1)); // two tied at rank 1
+            assert!(ranks.iter().filter(|&&r| r == 1).count() == 2);
+            assert!(ranks.contains(&3)); // rank 3 (gap after tie)
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_window_dense_rank() {
+        let mut rows = make_rows();
+        rows[0].insert("count".into(), Value::Int(10));
+        rows[1].insert("count".into(), Value::Int(10));
+        rows[2].insert("count".into(), Value::Int(5));
+
+        let stmt = crate::query_parser::parse_query(
+            "SELECT title, DENSE_RANK() OVER (ORDER BY count DESC) AS dr FROM test"
+        ).unwrap();
+        if let crate::query_parser::Statement::Select(q) = stmt {
+            let (result, _) = execute_inner(&q, &rows, None).unwrap();
+            let ranks: Vec<i64> = result.iter()
+                .map(|r| match &r["dr"] { Value::Int(n) => *n, _ => panic!("Expected Int") })
+                .collect();
+            assert!(ranks.iter().filter(|&&r| r == 1).count() == 2);
+            assert!(ranks.contains(&2)); // dense rank: no gap
+            assert!(!ranks.contains(&3));
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_window_lag() {
+        let stmt = crate::query_parser::parse_query(
+            "SELECT title, LAG(count, 1) OVER (ORDER BY count ASC) AS prev FROM test"
+        ).unwrap();
+        if let crate::query_parser::Statement::Select(q) = stmt {
+            let (rows, _) = execute_inner(&q, &make_rows(), None).unwrap();
+            // Sorted ASC: Beta(5), Alpha(10), Gamma(20)
+            // LAG: NULL, 5, 10
+            let first = rows.iter().find(|r| r["title"] == Value::String("Beta".into())).unwrap();
+            assert_eq!(first["prev"], Value::Null);
+            let second = rows.iter().find(|r| r["title"] == Value::String("Alpha".into())).unwrap();
+            assert_eq!(second["prev"], Value::Int(5));
+            let third = rows.iter().find(|r| r["title"] == Value::String("Gamma".into())).unwrap();
+            assert_eq!(third["prev"], Value::Int(10));
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_window_lead() {
+        let stmt = crate::query_parser::parse_query(
+            "SELECT title, LEAD(count, 1) OVER (ORDER BY count ASC) AS next FROM test"
+        ).unwrap();
+        if let crate::query_parser::Statement::Select(q) = stmt {
+            let (rows, _) = execute_inner(&q, &make_rows(), None).unwrap();
+            let first = rows.iter().find(|r| r["title"] == Value::String("Beta".into())).unwrap();
+            assert_eq!(first["next"], Value::Int(10));
+            let last = rows.iter().find(|r| r["title"] == Value::String("Gamma".into())).unwrap();
+            assert_eq!(last["next"], Value::Null);
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_window_sum_partition() {
+        let rows = vec![
+            Row::from([
+                ("cat".into(), Value::String("A".into())),
+                ("val".into(), Value::Int(10)),
+            ]),
+            Row::from([
+                ("cat".into(), Value::String("A".into())),
+                ("val".into(), Value::Int(20)),
+            ]),
+            Row::from([
+                ("cat".into(), Value::String("B".into())),
+                ("val".into(), Value::Int(5)),
+            ]),
+        ];
+        let stmt = crate::query_parser::parse_query(
+            "SELECT cat, val, SUM(val) OVER (PARTITION BY cat) AS cat_total FROM test"
+        ).unwrap();
+        if let crate::query_parser::Statement::Select(q) = stmt {
+            let (result, cols) = execute_inner(&q, &rows, None).unwrap();
+            assert_eq!(cols, vec!["cat", "val", "cat_total"]);
+            assert_eq!(result.len(), 3);
+            let a_rows: Vec<_> = result.iter().filter(|r| r["cat"] == Value::String("A".into())).collect();
+            assert_eq!(a_rows.len(), 2);
+            for r in &a_rows {
+                assert_eq!(r["cat_total"], Value::Float(30.0));
+            }
+            let b_row = result.iter().find(|r| r["cat"] == Value::String("B".into())).unwrap();
+            assert_eq!(b_row["cat_total"], Value::Float(5.0));
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_window_with_where_order_limit() {
+        let stmt = crate::query_parser::parse_query(
+            "SELECT title, ROW_NUMBER() OVER (ORDER BY count DESC) AS rn FROM test WHERE count > 4 ORDER BY rn LIMIT 2"
+        ).unwrap();
+        if let crate::query_parser::Statement::Select(q) = stmt {
+            let (result, _) = execute_inner(&q, &make_rows(), None).unwrap();
+            assert_eq!(result.len(), 2);
+            assert_eq!(result[0]["rn"], Value::Int(1));
+            assert_eq!(result[1]["rn"], Value::Int(2));
         } else {
             panic!("Expected Select");
         }

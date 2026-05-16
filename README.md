@@ -2,7 +2,7 @@
 
 A database where every entry is a markdown file and every change is a readable diff.
 
-MDQL turns folders of markdown files into a schema-validated, queryable database. Frontmatter fields are metadata columns. H2 sections are content columns. The files are the database — there is nothing else. Every file reads like a normal markdown document, but you get full SQL: SELECT, INSERT, UPDATE, DELETE, JOINs across multiple tables, CTEs, subqueries, views, ORDER BY, aggregation, computed expressions, and CASE WHEN.
+MDQL turns folders of markdown files into a schema-validated, queryable database. Frontmatter fields are metadata columns. H2 sections are content columns. The files are the database — there is nothing else. Every file reads like a normal markdown document, but you get full SQL: SELECT, INSERT, UPDATE, DELETE, JOINs across multiple tables, CTEs, subqueries, window functions, views, ORDER BY, aggregation, computed expressions, and CASE WHEN.
 
 Your database lives in git. Every insert, update, and migration is a readable diff. Branching, merging, and rollback come free.
 
@@ -315,6 +315,33 @@ rows, columns = db.query(
 ```
 
 Subqueries are pre-materialized: they execute first and their results replace the subquery node with literal values before the outer query runs.
+
+## Window Functions
+
+Window functions compute values across a set of rows related to the current row, without collapsing them. Supported: `ROW_NUMBER()`, `RANK()`, `DENSE_RANK()`, `LAG()`, `LEAD()`, and aggregate functions (`SUM`, `COUNT`, `AVG`, `MIN`, `MAX`) with `OVER`.
+
+```bash
+# ROW_NUMBER — assign a unique rank to each row
+mdql query examples/ "SELECT title, ROW_NUMBER() OVER (ORDER BY composite DESC) AS rank FROM strategies LIMIT 5"
+
+# RANK with PARTITION BY — rank within groups
+mdql query examples/ "SELECT title, status, RANK() OVER (PARTITION BY status ORDER BY composite DESC) AS status_rank FROM strategies"
+
+# LAG — access previous row's value
+mdql query examples/ "SELECT title, composite, LAG(composite, 1) OVER (ORDER BY composite DESC) AS prev_composite FROM strategies"
+
+# Aggregate window — SUM per partition without collapsing rows
+mdql query examples/ "SELECT title, status, COUNT(*) OVER (PARTITION BY status) AS status_count FROM strategies"
+```
+
+```python
+# Python API
+rows, columns = db.query(
+    "SELECT name, ROW_NUMBER() OVER (ORDER BY price DESC) AS rank FROM products"
+)
+```
+
+Window functions run after WHERE, GROUP BY, and HAVING, but before ORDER BY and LIMIT.
 
 ## Python API
 

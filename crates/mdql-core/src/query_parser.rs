@@ -18,9 +18,11 @@ static KEYWORDS: &[&str] = &[
     "INTERVAL", "DAY", "DAYS", "CURRENT_DATE", "CURRENT_TIMESTAMP", "DATEDIFF",
     "CREATE", "VIEW", "CASCADE", "RESTRICT",
     "WITH",
+    "OVER", "PARTITION", "ROW_NUMBER", "RANK", "DENSE_RANK", "LAG", "LEAD",
 ];
 
 static AGG_FUNCS: &[&str] = &["COUNT", "SUM", "AVG", "MIN", "MAX"];
+static WINDOW_FUNCS: &[&str] = &["ROW_NUMBER", "RANK", "DENSE_RANK", "LAG", "LEAD"];
 
 static TOKEN_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
@@ -533,6 +535,20 @@ impl Parser {
         Ok(ColumnList::Named(exprs))
     }
 
+    fn peek_is_window_func(&self) -> bool {
+        let t = match self.peek() {
+            Some(t) => t,
+            None => return false,
+        };
+        let name_upper = t.value.to_uppercase();
+        if !WINDOW_FUNCS.contains(&name_upper.as_str()) {
+            return false;
+        }
+        self.tokens
+            .get(self.pos + 1)
+            .map_or(false, |next| next.token_type == "op" && next.value == "(")
+    }
+
     fn peek_is_agg_func(&self) -> bool {
         let t = match self.peek() {
             Some(t) => t,
@@ -675,8 +691,28 @@ impl Parser {
     }
 
     fn parse_atom(&mut self) -> Result<Expr, MdqlError> {
+        if self.peek_is_window_func() {
+            return self.parse_standalone_window();
+        }
+
         if self.peek_is_agg_func() {
-            return self.parse_agg_expr();
+            let agg = self.parse_agg_expr()?;
+            if self.peek().map_or(false, |t| t.token_type == "keyword" && t.value == "OVER") {
+                self.advance();
+                let over = self.parse_window_spec()?;
+                if let Expr::Aggregate { func, arg, arg_expr } = agg {
+                    return Ok(Expr::Window {
+                        func: WindowFunc::Agg(func),
+                        args: if arg == "*" {
+                            vec![]
+                        } else {
+                            vec![arg_expr.map(|e| *e).unwrap_or(Expr::Column(arg))]
+                        },
+                        over,
+                    });
+                }
+            }
+            return Ok(agg);
         }
 
         let t = self.peek().ok_or_else(|| {
@@ -801,6 +837,51 @@ impl Parser {
         };
         self.expect("op", Some(")"))?;
         Ok(Expr::Aggregate { func, arg, arg_expr })
+    }
+
+    fn parse_standalone_window(&mut self) -> Result<Expr, MdqlError> {
+        let func_name = self.advance().value.to_uppercase();
+        let func = match func_name.as_str() {
+            "ROW_NUMBER" => WindowFunc::RowNumber,
+            "RANK" => WindowFunc::Rank,
+            "DENSE_RANK" => WindowFunc::DenseRank,
+            "LAG" => WindowFunc::Lag,
+            "LEAD" => WindowFunc::Lead,
+            _ => unreachable!(),
+        };
+        self.expect("op", Some("("))?;
+        let mut args = Vec::new();
+        if !self.peek().map_or(false, |t| t.token_type == "op" && t.value == ")") {
+            args.push(self.parse_additive()?);
+            while self.peek().map_or(false, |t| t.token_type == "op" && t.value == ",") {
+                self.advance();
+                args.push(self.parse_additive()?);
+            }
+        }
+        self.expect("op", Some(")"))?;
+        self.expect("keyword", Some("OVER"))?;
+        let over = self.parse_window_spec()?;
+        Ok(Expr::Window { func, args, over })
+    }
+
+    fn parse_window_spec(&mut self) -> Result<WindowSpec, MdqlError> {
+        self.expect("op", Some("("))?;
+        let mut partition_by = Vec::new();
+        if self.match_keyword("PARTITION") {
+            self.expect("keyword", Some("BY"))?;
+            partition_by.push(self.parse_ident()?);
+            while self.peek().map_or(false, |t| t.token_type == "op" && t.value == ",") {
+                self.advance();
+                partition_by.push(self.parse_ident()?);
+            }
+        }
+        let mut order_by = Vec::new();
+        if self.match_keyword("ORDER") {
+            self.expect("keyword", Some("BY"))?;
+            order_by = self.parse_order_by()?;
+        }
+        self.expect("op", Some(")"))?;
+        Ok(WindowSpec { partition_by, order_by })
     }
 
     fn parse_ident(&mut self) -> Result<String, MdqlError> {
@@ -1059,6 +1140,7 @@ impl Parser {
             | "CURRENT_DATE" | "CURRENT_TIMESTAMP" | "DATEDIFF"
             | "CREATE" | "VIEW" | "CASCADE" | "RESTRICT"
             | "WITH"
+            | "OVER" | "PARTITION" | "ROW_NUMBER" | "RANK" | "DENSE_RANK" | "LAG" | "LEAD"
         )
     }
 
@@ -2170,6 +2252,135 @@ mod tests {
                     expr: Expr::Subquery(_),
                     alias: Some(a),
                 } if a == "cnt"));
+            } else {
+                panic!("Expected Named columns");
+            }
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    // ── Window function tests ──────────────────────────────────────
+
+    #[test]
+    fn test_row_number_over_order_by() {
+        let stmt = parse_query(
+            "SELECT title, ROW_NUMBER() OVER (ORDER BY count DESC) AS rn FROM test"
+        ).unwrap();
+        if let Statement::Select(q) = stmt {
+            if let ColumnList::Named(exprs) = &q.columns {
+                assert_eq!(exprs.len(), 2);
+                if let SelectExpr::Expr { expr: Expr::Window { func, args, over }, alias } = &exprs[1] {
+                    assert_eq!(*func, WindowFunc::RowNumber);
+                    assert!(args.is_empty());
+                    assert!(over.partition_by.is_empty());
+                    assert_eq!(over.order_by.len(), 1);
+                    assert!(over.order_by[0].descending);
+                    assert_eq!(alias.as_deref(), Some("rn"));
+                } else {
+                    panic!("Expected Window expression, got {:?}", exprs[1]);
+                }
+            } else {
+                panic!("Expected Named columns");
+            }
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_rank_with_partition_by() {
+        let stmt = parse_query(
+            "SELECT RANK() OVER (PARTITION BY category ORDER BY price DESC) AS rnk FROM test"
+        ).unwrap();
+        if let Statement::Select(q) = stmt {
+            if let ColumnList::Named(exprs) = &q.columns {
+                if let SelectExpr::Expr { expr: Expr::Window { func, over, .. }, .. } = &exprs[0] {
+                    assert_eq!(*func, WindowFunc::Rank);
+                    assert_eq!(over.partition_by, vec!["category"]);
+                    assert_eq!(over.order_by.len(), 1);
+                } else {
+                    panic!("Expected Window expression");
+                }
+            } else {
+                panic!("Expected Named columns");
+            }
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_agg_over_window() {
+        let stmt = parse_query(
+            "SELECT SUM(price) OVER (PARTITION BY category) AS cat_total FROM test"
+        ).unwrap();
+        if let Statement::Select(q) = stmt {
+            if let ColumnList::Named(exprs) = &q.columns {
+                if let SelectExpr::Expr { expr: Expr::Window { func, args, over }, alias } = &exprs[0] {
+                    assert!(matches!(func, WindowFunc::Agg(AggFunc::Sum)));
+                    assert_eq!(args.len(), 1);
+                    assert_eq!(over.partition_by, vec!["category"]);
+                    assert!(over.order_by.is_empty());
+                    assert_eq!(alias.as_deref(), Some("cat_total"));
+                } else {
+                    panic!("Expected Window expression");
+                }
+            } else {
+                panic!("Expected Named columns");
+            }
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_lag_with_args() {
+        let stmt = parse_query(
+            "SELECT LAG(price, 1) OVER (ORDER BY price) AS prev_price FROM test"
+        ).unwrap();
+        if let Statement::Select(q) = stmt {
+            if let ColumnList::Named(exprs) = &q.columns {
+                if let SelectExpr::Expr { expr: Expr::Window { func, args, .. }, .. } = &exprs[0] {
+                    assert_eq!(*func, WindowFunc::Lag);
+                    assert_eq!(args.len(), 2);
+                } else {
+                    panic!("Expected Window expression");
+                }
+            } else {
+                panic!("Expected Named columns");
+            }
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_dense_rank() {
+        let stmt = parse_query(
+            "SELECT DENSE_RANK() OVER (ORDER BY count DESC) AS dr FROM test"
+        ).unwrap();
+        if let Statement::Select(q) = stmt {
+            if let ColumnList::Named(exprs) = &q.columns {
+                if let SelectExpr::Expr { expr: Expr::Window { func, .. }, .. } = &exprs[0] {
+                    assert_eq!(*func, WindowFunc::DenseRank);
+                } else {
+                    panic!("Expected Window expression");
+                }
+            } else {
+                panic!("Expected Named columns");
+            }
+        } else {
+            panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_sum_without_over_is_aggregate() {
+        let stmt = parse_query("SELECT SUM(count) FROM test").unwrap();
+        if let Statement::Select(q) = stmt {
+            if let ColumnList::Named(exprs) = &q.columns {
+                assert!(matches!(&exprs[0], SelectExpr::Aggregate { func: AggFunc::Sum, .. }));
             } else {
                 panic!("Expected Named columns");
             }
