@@ -117,6 +117,28 @@ fn row_to_dict(py: Python<'_>, row: &HashMap<String, Value>) -> PyResult<PyObjec
     Ok(dict.into_pyobject(py)?.into_any().unbind())
 }
 
+/// Build a result-row dict keyed by exactly the query's `columns`, in header
+/// order, pulling the value for each column from the row (None if absent).
+///
+/// This keeps the returned dict aligned with the `columns` header: same length,
+/// same order, and no extra keys. A raw `row` may carry more keys than the
+/// header (e.g. JOIN adds unqualified-base aliases) or omit a projected column
+/// (a non-existent column, or an optional field absent on that row); projecting
+/// through `columns` normalizes both so consumers can zip `columns` with the
+/// dict's values or key by name without surprises.
+fn row_to_projected_dict(
+    py: Python<'_>,
+    row: &HashMap<String, Value>,
+    columns: &[String],
+) -> PyResult<PyObject> {
+    let dict = PyDict::new(py);
+    for col in columns {
+        let v = row.get(col).cloned().unwrap_or(Value::Null);
+        dict.set_item(col, value_to_py(py, &v))?;
+    }
+    Ok(dict.into_pyobject(py)?.into_any().unbind())
+}
+
 fn dict_to_map(dict: &Bound<'_, PyDict>) -> PyResult<HashMap<String, Value>> {
     let mut map = HashMap::new();
     for (k, v) in dict.iter() {
@@ -675,7 +697,7 @@ impl PyTable {
 
         let py_rows = PyList::new(
             py,
-            result_rows.iter().map(|r| row_to_dict(py, r).unwrap()),
+            result_rows.iter().map(|r| row_to_projected_dict(py, r, &columns).unwrap()),
         )?;
         let py_cols = PyList::new(py, &columns)?;
         Ok((
@@ -789,7 +811,7 @@ impl PyDatabase {
 
         let py_rows = PyList::new(
             py,
-            result_rows.iter().map(|r| row_to_dict(py, r).unwrap()),
+            result_rows.iter().map(|r| row_to_projected_dict(py, r, &columns).unwrap()),
         )?;
         let py_cols = PyList::new(py, &columns)?;
         Ok((

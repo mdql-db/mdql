@@ -111,6 +111,22 @@ fn execute_with_fts(
         ColumnList::Named(exprs) => exprs.iter().map(|e| e.output_name()).collect(),
     };
 
+    // Reject duplicate output names. A result row is a key->value map, so two
+    // columns with the same output name cannot both be represented — the dict
+    // would collapse them and the header/row lengths would silently disagree.
+    // Require the caller to disambiguate with AS.
+    if let ColumnList::Named(_) = &query.columns {
+        let mut seen = std::collections::HashSet::new();
+        for c in &columns {
+            if !seen.insert(c.as_str()) {
+                return Err(MdqlError::QueryExecution(format!(
+                    "duplicate output column '{}' — give each projection a unique name with AS",
+                    c
+                )));
+            }
+        }
+    }
+
     // Filter — try index first, fall back to full scan
     let filtered: Vec<Row> = if let Some(ref wc) = query.where_clause {
         let candidate_paths = index.and_then(|idx| try_index_filter(wc, idx));
@@ -207,6 +223,20 @@ fn execute_with_fts(
             columns.iter().map(|s| s.as_str()).collect();
         for row in &mut result {
             row.retain(|k, _| col_set.contains(k.as_str()));
+        }
+    }
+
+    // Null-fill so every result row carries every header column as a key.
+    // A requested column may be absent from a row because it does not exist
+    // on the table at all, or because it is an optional field/section missing
+    // on that row (and SELECT * unions keys across rows). Inserting Null keeps
+    // the column header aligned with each row dict, so consumers that zip
+    // `columns` with row values stay in sync.
+    for row in &mut result {
+        for col in &columns {
+            if !row.contains_key(col) {
+                row.insert(col.clone(), Value::Null);
+            }
         }
     }
 
@@ -1226,6 +1256,75 @@ mod tests {
         };
         let (rows, _cols) = execute_inner(&q, &make_rows(), None).unwrap();
         assert_eq!(rows.len(), 3);
+    }
+
+    #[test]
+    fn test_select_nonexistent_column_null_filled() {
+        // SELECT naming a column absent from the table must keep header and
+        // rows aligned: the unknown column appears in every row as Null.
+        let q = parse_query("SELECT title, missing_col, count FROM test").unwrap();
+        let q = match q {
+            Statement::Select(s) => s,
+            _ => panic!("expected SELECT"),
+        };
+        let (rows, cols) = execute_inner(&q, &make_rows(), None).unwrap();
+        assert_eq!(cols, vec!["title", "missing_col", "count"]);
+        assert_eq!(rows.len(), 3);
+        for row in &rows {
+            assert_eq!(row.len(), cols.len(), "row keys must match header length");
+            for c in &cols {
+                assert!(row.contains_key(c), "row missing header column {c}");
+            }
+            assert_eq!(row.get("missing_col"), Some(&Value::Null));
+        }
+    }
+
+    #[test]
+    fn test_select_duplicate_output_column_errors() {
+        // A result row is keyed by output name; two columns with the same name
+        // cannot both be represented, so the query must be rejected.
+        let q = parse_query("SELECT title, title FROM test").unwrap();
+        let q = match q {
+            Statement::Select(s) => s,
+            _ => panic!("expected SELECT"),
+        };
+        let err = execute_inner(&q, &make_rows(), None);
+        assert!(err.is_err());
+        let msg = err.unwrap_err().to_string();
+        assert!(msg.contains("duplicate output column"), "got: {msg}");
+    }
+
+    #[test]
+    fn test_select_all_sparse_rows_aligned() {
+        // SELECT * unions keys across rows; a row missing an optional field
+        // must still carry every header column (as Null) so header/rows align.
+        let rows = vec![
+            Row::from([
+                ("path".into(), Value::String("a.md".into())),
+                ("title".into(), Value::String("Alpha".into())),
+                ("kill_reason".into(), Value::String("no edge".into())),
+            ]),
+            Row::from([
+                ("path".into(), Value::String("b.md".into())),
+                ("title".into(), Value::String("Beta".into())),
+            ]),
+        ];
+        let q = parse_query("SELECT * FROM test").unwrap();
+        let q = match q {
+            Statement::Select(s) => s,
+            _ => panic!("expected SELECT"),
+        };
+        let (result, cols) = execute_inner(&q, &rows, None).unwrap();
+        assert!(cols.contains(&"kill_reason".to_string()));
+        for row in &result {
+            assert_eq!(row.len(), cols.len(), "row keys must match header length");
+            for c in &cols {
+                assert!(row.contains_key(c), "row missing header column {c}");
+            }
+        }
+        // The row that lacked kill_reason now carries it as Null.
+        let beta = result.iter().find(|r| r.get("path") == Some(&Value::String("b.md".into()))).unwrap();
+        assert_eq!(beta.get("kill_reason"), Some(&Value::Null));
     }
 
     #[test]
