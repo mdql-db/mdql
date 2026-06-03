@@ -314,7 +314,9 @@ rows, columns = db.query(
 )
 ```
 
-Subqueries are pre-materialized: they execute first and their results replace the subquery node with literal values before the outer query runs.
+Subqueries are pre-materialized: they execute first and their results replace the subquery node with literal values before the outer query runs. Subqueries over `date`/`datetime` columns compare correctly (e.g. `WHERE modified IN (SELECT MAX(modified) FROM backtests GROUP BY strategy)`).
+
+Because subqueries are pre-materialized once, **correlated** subqueries (referencing an outer row's columns, e.g. `WHERE b.created = (SELECT MAX(b2.created) FROM backtests b2 WHERE b2.strategy = b.strategy)`) and **tuple** `IN` (`WHERE (strategy, created) IN (SELECT ...)`) are not supported. Use a window function or an `IN` subquery for latest-per-group instead (see below).
 
 ## Window Functions
 
@@ -342,6 +344,26 @@ rows, columns = db.query(
 ```
 
 Window functions run after WHERE, GROUP BY, and HAVING, but before ORDER BY and LIMIT.
+
+### Latest row per group
+
+A common need is the newest row per group (e.g. the latest backtest per strategy) so stale historical rows don't skew results. Two ways:
+
+```bash
+# 1. Window function — number rows per group, keep the first
+mdql query examples/ \
+  "SELECT * FROM (
+     SELECT strategy, sharpe, ROW_NUMBER() OVER (PARTITION BY strategy ORDER BY created DESC) AS rn
+     FROM backtests
+   ) WHERE rn = 1"
+
+# 2. IN subquery — match the max timestamp per group
+mdql query examples/ \
+  "SELECT strategy, sharpe FROM backtests
+   WHERE created IN (SELECT MAX(created) FROM backtests GROUP BY strategy)"
+```
+
+(JOINing directly to a `GROUP BY` subquery — a derived table in the JOIN clause — is not yet supported; use one of the two forms above.)
 
 ## Python API
 

@@ -389,12 +389,18 @@ fn materialize_in_expr(expr: &mut Expr, tables: &Tables) -> crate::errors::Resul
 }
 
 fn value_to_sql_value(v: &crate::model::Value) -> SqlValue {
+    use crate::model::Value;
     match v {
-        crate::model::Value::String(s) => SqlValue::String(s.clone()),
-        crate::model::Value::Int(n) => SqlValue::Int(*n),
-        crate::model::Value::Float(f) => SqlValue::Float(*f),
-        crate::model::Value::Bool(b) => SqlValue::Int(if *b { 1 } else { 0 }),
-        _ => SqlValue::Null,
+        Value::String(s) => SqlValue::String(s.clone()),
+        Value::Int(n) => SqlValue::Int(*n),
+        Value::Float(f) => SqlValue::Float(*f),
+        Value::Bool(b) => SqlValue::Int(if *b { 1 } else { 0 }),
+        // Dates/datetimes round-trip through their canonical ISO string, which
+        // the comparison engine coerces back to a date when matched against a
+        // date column. Without this a subquery over a date column (e.g.
+        // `WHERE modified IN (SELECT MAX(modified) ...)`) collapsed to NULL.
+        Value::Date(_) | Value::DateTime(_) => SqlValue::String(v.to_display_string()),
+        Value::Null | Value::List(_) | Value::Dict(_) => SqlValue::Null,
     }
 }
 
@@ -791,6 +797,23 @@ mod tests {
     }
 
     #[test]
+    fn test_join_compound_or() {
+        // Issue #57: OR in the ON clause.
+        let dir = make_compound_join_db();
+        let (result, _) = execute(
+            dir.path(),
+            "SELECT s.title, b.sharpe FROM strategies s JOIN backtests b ON b.strategy = s.path AND (b.mode = 'PAPER' OR b.mode = 'LIVE')",
+        )
+        .unwrap();
+        if let QueryResult::Rows { rows, .. } = result {
+            // alpha has PAPER + LIVE (2), beta has PAPER (1) => 3 rows.
+            assert_eq!(rows.len(), 3);
+        } else {
+            panic!("Expected Rows");
+        }
+    }
+
+    #[test]
     fn test_join_compound_with_comparison() {
         let dir = make_compound_join_db();
         let (result, _) = execute(
@@ -1004,6 +1027,60 @@ mod tests {
         if let QueryResult::Rows { rows, .. } = result {
             assert_eq!(rows.len(), 1);
             assert_eq!(rows[0].get("title"), Some(&Value::String("Alpha".into())));
+        } else {
+            panic!("Expected Rows");
+        }
+    }
+
+    fn make_dated_bt_db() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join("_mdql.md"),
+            "---\ntype: database\nname: testdb\n---\n",
+        )
+        .unwrap();
+        let bt = dir.path().join("backtests");
+        fs::create_dir(&bt).unwrap();
+        fs::write(
+            bt.join("_mdql.md"),
+            "---\ntype: schema\ntable: backtests\nprimary_key: path\nfrontmatter:\n  strategy:\n    type: string\n  result:\n    type: string\n  modified:\n    type: datetime\n---\n",
+        )
+        .unwrap();
+        fs::write(bt.join("b1.md"), "---\nstrategy: alpha.md\nresult: PASS\nmodified: \"2026-01-01T00:00:00\"\n---\n# b1\n").unwrap();
+        fs::write(bt.join("b2.md"), "---\nstrategy: alpha.md\nresult: INCONCLUSIVE\nmodified: \"2026-05-01T00:00:00\"\n---\n# b2\n").unwrap();
+        dir
+    }
+
+    #[test]
+    fn test_where_in_subquery_datetime() {
+        // Issue #58: a subquery over a datetime column must not collapse to
+        // NULL. Latest-per-group via IN should return the newest row.
+        let dir = make_dated_bt_db();
+        let (result, _) = execute(
+            dir.path(),
+            "SELECT result, modified FROM backtests WHERE modified IN (SELECT MAX(modified) FROM backtests GROUP BY strategy)",
+        )
+        .unwrap();
+        if let QueryResult::Rows { rows, .. } = result {
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0].get("result"), Some(&Value::String("INCONCLUSIVE".into())));
+        } else {
+            panic!("Expected Rows");
+        }
+    }
+
+    #[test]
+    fn test_where_scalar_subquery_datetime() {
+        // Scalar (non-correlated) subquery returning a datetime.
+        let dir = make_dated_bt_db();
+        let (result, _) = execute(
+            dir.path(),
+            "SELECT result FROM backtests WHERE modified = (SELECT MAX(modified) FROM backtests)",
+        )
+        .unwrap();
+        if let QueryResult::Rows { rows, .. } = result {
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0].get("result"), Some(&Value::String("INCONCLUSIVE".into())));
         } else {
             panic!("Expected Rows");
         }
