@@ -26,8 +26,9 @@ Every change follows this sequence — do not skip steps or stop partway:
 9. **Tag** with `v*` (e.g. `git tag v0.5.22`) and push the tag — this triggers CI release to crates.io + PyPI
 10. **Wait for CI** — `gh run watch <id> --exit-status`
 11. **Update Homebrew** — get SHA256 of tarball, update `mdql-db/homebrew-tap` via GitHub API, pull tap locally, `brew reinstall mdql`
-12. **Install in zunid** — `~/repos/zunid/.venv/bin/pip install --upgrade mdql --no-cache-dir --index-url https://pypi.org/simple`
-13. **Close the GitHub issue** if applicable
+12. **Install in zunid** — the zunid venv is uv-managed (no pip): `cd ~/repos/zunid && uv pip install --no-cache --reinstall "mdql==<version>" --index-url https://pypi.org/simple` (pin the exact version — plain `--upgrade` can miss a release published seconds earlier due to PyPI propagation lag)
+13. **Refresh the cargo CLI** — `cargo install --path crates/mdql --force` (the binary at `~/.cargo/bin/mdql` is on PATH and shadows the Homebrew build)
+14. **Close the GitHub issue** if applicable
 
 ## Version bump locations
 
