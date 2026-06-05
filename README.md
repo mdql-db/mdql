@@ -592,6 +592,8 @@ mdql query examples/strategies/ \
 
 Supported WHERE operators: `=`, `!=`, `<`, `>`, `<=`, `>=`, `LIKE`, `IN`, `IS NULL`, `IS NOT NULL`, `AND`, `OR`
 
+Boolean columns compare against the literals `true`/`false` (case-insensitive): `WHERE enabled = true`. They also work in INSERT/UPDATE values: `SET enabled = false`.
+
 Column names with spaces use backticks: `` SELECT `Structural Mechanism` FROM strategies ``
 
 ### Computed expressions

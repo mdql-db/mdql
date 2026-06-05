@@ -1454,6 +1454,29 @@ mod tests {
         assert_eq!(result.len(), 3);
     }
 
+    #[test]
+    fn test_where_boolean_literal_filters_rows() {
+        // #60 end-to-end: `flag = true` must match Bool rows, not evaluate
+        // against a nonexistent column named "true" and return nothing.
+        let mut rows = make_rows();
+        rows[0].insert("flag".into(), Value::Bool(true));
+        rows[1].insert("flag".into(), Value::Bool(false));
+        rows[2].insert("flag".into(), Value::Bool(true));
+
+        for (sql, expected) in [
+            ("SELECT path FROM test WHERE flag = true", 2),
+            ("SELECT path FROM test WHERE flag = FALSE", 1),
+            ("SELECT path FROM test WHERE flag != true", 1),
+        ] {
+            let q = match parse_query(sql).unwrap() {
+                Statement::Select(s) => s,
+                _ => panic!("expected SELECT"),
+            };
+            let (result, _) = execute_inner(&q, &rows, None).unwrap();
+            assert_eq!(result.len(), expected, "query: {sql}");
+        }
+    }
+
     // ── Expression evaluation tests ─────────────────────────��─────
 
     #[test]
