@@ -651,6 +651,7 @@ pub(crate) fn evaluate_expr(expr: &Expr, row: &Row) -> Value {
         Expr::Literal(SqlValue::Int(n)) => Value::Int(*n),
         Expr::Literal(SqlValue::Float(f)) => Value::Float(*f),
         Expr::Literal(SqlValue::String(s)) => Value::String(s.clone()),
+        Expr::Literal(SqlValue::Bool(b)) => Value::Bool(*b),
         Expr::Literal(SqlValue::Null) => Value::Null,
         Expr::Literal(SqlValue::List(_)) => Value::Null,
         Expr::Column(name) => {
@@ -967,6 +968,7 @@ fn coerce_sql_to_value(sql_val: &SqlValue, target: &Value) -> Value {
             }
         }
         SqlValue::Float(f) => Value::Float(*f),
+        SqlValue::Bool(b) => Value::Bool(*b),
         SqlValue::List(_) => Value::Null, // Lists handled separately
     }
 }
@@ -1041,6 +1043,7 @@ fn sql_value_to_index_value(sv: &SqlValue) -> Value {
         }
         SqlValue::Int(n) => Value::Int(*n),
         SqlValue::Float(f) => Value::Float(*f),
+        SqlValue::Bool(b) => Value::Bool(*b),
         SqlValue::Null => Value::Null,
         SqlValue::List(_) => Value::Null,
     }
@@ -1202,6 +1205,7 @@ pub(crate) fn sql_value_to_value(sql_val: &SqlValue) -> Value {
         SqlValue::String(s) => Value::String(s.clone()),
         SqlValue::Int(n) => Value::Int(*n),
         SqlValue::Float(f) => Value::Float(*f),
+        SqlValue::Bool(b) => Value::Bool(*b),
         SqlValue::List(items) => {
             let strings: Vec<String> = items
                 .iter()

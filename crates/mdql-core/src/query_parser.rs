@@ -777,6 +777,16 @@ impl Parser {
                     Ok(expr)
                 }
             }
+            // #60: boolean literals win over column interpretation, matching
+            // SQL where TRUE/FALSE are reserved literals.
+            "ident" if t.value.eq_ignore_ascii_case("true") => {
+                self.advance();
+                Ok(Expr::Literal(SqlValue::Bool(true)))
+            }
+            "ident" if t.value.eq_ignore_ascii_case("false") => {
+                self.advance();
+                Ok(Expr::Literal(SqlValue::Bool(false)))
+            }
             "ident" => {
                 let name = self.advance().value;
                 Ok(Expr::Column(name))
@@ -1090,6 +1100,17 @@ impl Parser {
                 self.advance();
                 Ok(SqlValue::Null)
             }
+            // #60: TRUE/FALSE are literals, not column refs — `x = true`
+            // previously parsed as a comparison against a nonexistent
+            // column and silently matched nothing.
+            "ident" if t.value.eq_ignore_ascii_case("true") => {
+                self.advance();
+                Ok(SqlValue::Bool(true))
+            }
+            "ident" if t.value.eq_ignore_ascii_case("false") => {
+                self.advance();
+                Ok(SqlValue::Bool(false))
+            }
             _ => Err(MdqlError::QueryParse(format!(
                 "Expected value, got '{}'",
                 t.raw
@@ -1186,6 +1207,23 @@ mod tests {
             assert_eq!(q.columns, ColumnList::All);
         } else {
             panic!("Expected Select");
+        }
+    }
+
+    #[test]
+    fn test_boolean_literal_parses_as_bool_not_column() {
+        // #60: `enabled = true` silently matched nothing — `true` parsed as
+        // a reference to a nonexistent column instead of a literal.
+        for (sql, expected) in [
+            ("SELECT title FROM t WHERE enabled = true", SqlValue::Bool(true)),
+            ("SELECT title FROM t WHERE enabled = FALSE", SqlValue::Bool(false)),
+        ] {
+            let stmt = parse_query(sql).unwrap();
+            let Statement::Select(q) = stmt else { panic!("Expected Select") };
+            let WhereClause::Comparison(cmp) = q.where_clause.unwrap() else {
+                panic!("Expected Comparison")
+            };
+            assert_eq!(cmp.value, Some(expected));
         }
     }
 

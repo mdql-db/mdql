@@ -191,6 +191,7 @@ fn sqlvalue_to_py(py: Python<'_>, val: &qp::SqlValue) -> PyObject {
         qp::SqlValue::String(s) => s.into_pyobject(py).unwrap().into_any().unbind(),
         qp::SqlValue::Int(n) => n.into_pyobject(py).unwrap().into_any().unbind(),
         qp::SqlValue::Float(f) => f.into_pyobject(py).unwrap().into_any().unbind(),
+        qp::SqlValue::Bool(b) => pyo3::types::PyBool::new(py, *b).to_owned().into_any().unbind(),
         qp::SqlValue::List(items) => {
             let list = PyList::new(py, items.iter().map(|v| sqlvalue_to_py(py, v))).unwrap();
             list.into_pyobject(py).unwrap().into_any().unbind()

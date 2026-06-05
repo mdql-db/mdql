@@ -37,6 +37,7 @@ impl Expr {
             Expr::Literal(SqlValue::Int(n)) => n.to_string(),
             Expr::Literal(SqlValue::Float(f)) => f.to_string(),
             Expr::Literal(SqlValue::String(s)) => format!("'{}'", s),
+            Expr::Literal(SqlValue::Bool(b)) => b.to_string(),
             Expr::Literal(SqlValue::Null) => "NULL".to_string(),
             Expr::Literal(SqlValue::List(_)) => "list".to_string(),
             Expr::Column(name) => name.clone(),
@@ -176,6 +177,7 @@ pub enum SqlValue {
     String(String),
     Int(i64),
     Float(f64),
+    Bool(bool),
     Null,
     List(Vec<SqlValue>),
 }
@@ -413,6 +415,7 @@ pub fn where_clause_to_sql(clause: &WhereClause) -> String {
                 Some(SqlValue::String(s)) => format!("{} {} '{}'", cmp.column, op_str, s),
                 Some(SqlValue::Int(n)) => format!("{} {} {}", cmp.column, op_str, n),
                 Some(SqlValue::Float(f)) => format!("{} {} {}", cmp.column, op_str, f),
+                Some(SqlValue::Bool(b)) => format!("{} {} {}", cmp.column, op_str, b),
                 Some(SqlValue::Null) => format!("{} {} NULL", cmp.column, op_str),
                 Some(SqlValue::List(items)) => {
                     let vals: Vec<String> = items.iter().map(|v| match v {
