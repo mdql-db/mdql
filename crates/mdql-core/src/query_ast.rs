@@ -269,6 +269,7 @@ pub struct CteClause {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SelectQuery {
+    pub distinct: bool,
     pub columns: ColumnList,
     pub table: String,
     pub table_alias: Option<String>,

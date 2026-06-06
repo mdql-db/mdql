@@ -196,6 +196,18 @@ impl Parser {
 
     fn parse_select(&mut self) -> Result<SelectQuery, MdqlError> {
         self.expect("keyword", Some("SELECT"))?;
+        // #61: optional DISTINCT — previously lexed as an identifier, so
+        // `SELECT DISTINCT strategy` parsed as column "DISTINCT" with the
+        // implicit alias "strategy" and silently returned nulled rows.
+        let distinct = if self
+            .peek()
+            .map_or(false, |t| t.token_type == "ident" && t.value.eq_ignore_ascii_case("distinct"))
+        {
+            self.advance();
+            true
+        } else {
+            false
+        };
         let columns = self.parse_columns()?;
         self.expect("keyword", Some("FROM"))?;
 
@@ -294,6 +306,7 @@ impl Parser {
         }
 
         Ok(SelectQuery {
+            distinct,
             columns,
             table,
             table_alias,
@@ -1208,6 +1221,29 @@ mod tests {
         } else {
             panic!("Expected Select");
         }
+    }
+
+    #[test]
+    fn test_select_distinct_parses_flag_and_column() {
+        // #61: DISTINCT lexed as an identifier and became a column reference
+        // with the real column demoted to an implicit alias.
+        let stmt = parse_query("SELECT DISTINCT strategy FROM backtests").unwrap();
+        let Statement::Select(q) = stmt else { panic!("Expected Select") };
+        assert!(q.distinct);
+        assert_eq!(
+            q.columns,
+            ColumnList::Named(vec![SelectExpr::Column("strategy".into())])
+        );
+
+        // Case-insensitive; plain SELECT keeps distinct = false.
+        let Statement::Select(q) = parse_query("select distinct a, b from t").unwrap() else {
+            panic!("Expected Select")
+        };
+        assert!(q.distinct);
+        let Statement::Select(q) = parse_query("SELECT strategy FROM backtests").unwrap() else {
+            panic!("Expected Select")
+        };
+        assert!(!q.distinct);
     }
 
     #[test]

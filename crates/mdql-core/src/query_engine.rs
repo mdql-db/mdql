@@ -183,6 +183,13 @@ fn execute_with_fts(
         }
     }
 
+    // DISTINCT — dedupe on the projected output values, keeping the first
+    // occurrence. Runs before ORDER BY and LIMIT per SQL semantics.
+    if query.distinct {
+        let mut seen = std::collections::HashSet::new();
+        result.retain(|row| seen.insert(distinct_key(row, &query.columns, &columns)));
+    }
+
     // Sort — resolve ORDER BY aliases against SELECT list
     if let Some(ref order_by) = query.order_by {
         let resolved = resolve_order_aliases(order_by, &query.columns);
@@ -241,6 +248,44 @@ fn execute_with_fts(
     }
 
     Ok((result, columns))
+}
+
+/// Build a dedup key for SELECT DISTINCT from a row's projected output values.
+///
+/// Mirrors how projection resolves each output column: plain columns and
+/// already-computed aggregate/window outputs read from the row; other
+/// expressions are evaluated. Values are serialized via Debug, which
+/// distinguishes variants (Null vs empty string, Int(1) vs Bool(true)).
+fn distinct_key(row: &Row, column_spec: &ColumnList, header: &[String]) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    match column_spec {
+        ColumnList::All => {
+            for col in header {
+                parts.push(format!("{:?}", row.get(col).unwrap_or(&Value::Null)));
+            }
+        }
+        ColumnList::Named(exprs) => {
+            for se in exprs {
+                let val = match se {
+                    SelectExpr::Column(name) => {
+                        row.get(name).cloned().unwrap_or(Value::Null)
+                    }
+                    SelectExpr::Aggregate { .. } => {
+                        row.get(&se.output_name()).cloned().unwrap_or(Value::Null)
+                    }
+                    SelectExpr::Expr { expr, .. } => {
+                        if expr.contains_window() {
+                            row.get(&se.output_name()).cloned().unwrap_or(Value::Null)
+                        } else {
+                            evaluate_expr(expr, row)
+                        }
+                    }
+                };
+                parts.push(format!("{:?}", val));
+            }
+        }
+    }
+    parts.join("\u{1f}")
 }
 
 fn aggregate_rows(
@@ -1246,6 +1291,7 @@ mod tests {
     #[test]
     fn test_select_all() {
         let q = SelectQuery {
+            distinct: false,
             columns: ColumnList::All,
             table: "test".into(),
             table_alias: None,
@@ -1334,6 +1380,7 @@ mod tests {
     #[test]
     fn test_where_gt() {
         let q = SelectQuery {
+            distinct: false,
             columns: ColumnList::All,
             table: "test".into(),
             table_alias: None,
@@ -1359,6 +1406,7 @@ mod tests {
     #[test]
     fn test_order_by_desc() {
         let q = SelectQuery {
+            distinct: false,
             columns: ColumnList::All,
             table: "test".into(),
             table_alias: None,
@@ -1383,6 +1431,7 @@ mod tests {
     #[test]
     fn test_limit() {
         let q = SelectQuery {
+            distinct: false,
             columns: ColumnList::All,
             table: "test".into(),
             table_alias: None,
@@ -1402,6 +1451,7 @@ mod tests {
     #[test]
     fn test_like() {
         let q = SelectQuery {
+            distinct: false,
             columns: ColumnList::All,
             table: "test".into(),
             table_alias: None,
@@ -1431,6 +1481,7 @@ mod tests {
         rows[1].insert("optional".into(), Value::Null);
 
         let q = SelectQuery {
+            distinct: false,
             columns: ColumnList::All,
             table: "test".into(),
             table_alias: None,
@@ -1452,6 +1503,60 @@ mod tests {
         let (result, _) = execute_inner(&q, &rows, None).unwrap();
         // All rows where optional is NULL or missing
         assert_eq!(result.len(), 3);
+    }
+
+    #[test]
+    fn test_select_distinct_dedupes_and_projects() {
+        // #61: DISTINCT returned every row with the column nulled.
+        let rows = vec![
+            Row::from([("path".into(), Value::String("1.md".into())), ("strategy".into(), Value::String("a".into()))]),
+            Row::from([("path".into(), Value::String("2.md".into())), ("strategy".into(), Value::String("b".into()))]),
+            Row::from([("path".into(), Value::String("3.md".into())), ("strategy".into(), Value::String("a".into()))]),
+        ];
+        let q = match parse_query("SELECT DISTINCT strategy FROM backtests").unwrap() {
+            Statement::Select(s) => s,
+            _ => panic!("expected SELECT"),
+        };
+        let (result, cols) = execute_inner(&q, &rows, None).unwrap();
+        assert_eq!(cols, vec!["strategy"]);
+        assert_eq!(result.len(), 2);
+        let values: Vec<_> = result.iter().map(|r| r.get("strategy").unwrap().clone()).collect();
+        assert_eq!(values, vec![Value::String("a".into()), Value::String("b".into())]);
+    }
+
+    #[test]
+    fn test_select_distinct_applies_before_limit() {
+        // SQL semantics: dedupe first, then LIMIT.
+        let rows = vec![
+            Row::from([("path".into(), Value::String("1.md".into())), ("s".into(), Value::String("a".into()))]),
+            Row::from([("path".into(), Value::String("2.md".into())), ("s".into(), Value::String("a".into()))]),
+            Row::from([("path".into(), Value::String("3.md".into())), ("s".into(), Value::String("b".into()))]),
+            Row::from([("path".into(), Value::String("4.md".into())), ("s".into(), Value::String("c".into()))]),
+        ];
+        let q = match parse_query("SELECT DISTINCT s FROM t ORDER BY s LIMIT 2").unwrap() {
+            Statement::Select(s) => s,
+            _ => panic!("expected SELECT"),
+        };
+        let (result, _) = execute_inner(&q, &rows, None).unwrap();
+        // Naive limit-then-dedupe would give ["a"] only.
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].get("s"), Some(&Value::String("a".into())));
+        assert_eq!(result[1].get("s"), Some(&Value::String("b".into())));
+    }
+
+    #[test]
+    fn test_select_distinct_star() {
+        let rows = vec![
+            Row::from([("path".into(), Value::String("1.md".into())), ("s".into(), Value::String("a".into()))]),
+            Row::from([("path".into(), Value::String("1.md".into())), ("s".into(), Value::String("a".into()))]),
+            Row::from([("path".into(), Value::String("2.md".into())), ("s".into(), Value::String("b".into()))]),
+        ];
+        let q = match parse_query("SELECT DISTINCT * FROM t").unwrap() {
+            Statement::Select(s) => s,
+            _ => panic!("expected SELECT"),
+        };
+        let (result, _) = execute_inner(&q, &rows, None).unwrap();
+        assert_eq!(result.len(), 2);
     }
 
     #[test]
@@ -1744,6 +1849,7 @@ mod tests {
         ];
 
         let q = SelectQuery {
+            distinct: false,
             columns: ColumnList::Named(vec![
                 SelectExpr::Column("o.token".into()),
                 SelectExpr::Column("o.event_date".into()),

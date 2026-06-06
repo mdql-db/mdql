@@ -295,6 +295,8 @@ struct PyJoinInfo {
 #[derive(Clone)]
 struct PyQuery {
     #[pyo3(get)]
+    distinct: bool,
+    #[pyo3(get)]
     table: String,
     #[pyo3(get)]
     table_alias: Option<String>,
@@ -517,6 +519,7 @@ fn select_query_to_py(py: Python<'_>, q: &qp::SelectQuery) -> PyResult<PyObject>
     }).collect();
 
     let py_q = Py::new(py, PyQuery {
+        distinct: q.distinct,
         table: q.table.clone(),
         table_alias: q.table_alias.clone(),
         order_by,

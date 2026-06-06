@@ -594,6 +594,12 @@ Supported WHERE operators: `=`, `!=`, `<`, `>`, `<=`, `>=`, `LIKE`, `IN`, `IS NU
 
 Boolean columns compare against the literals `true`/`false` (case-insensitive): `WHERE enabled = true`. They also work in INSERT/UPDATE values: `SET enabled = false`.
 
+`SELECT DISTINCT` deduplicates on the projected columns (before ORDER BY and LIMIT):
+
+```bash
+mdql query examples/ "SELECT DISTINCT strategy FROM backtests"
+```
+
 Column names with spaces use backticks: `` SELECT `Structural Mechanism` FROM strategies ``
 
 ### Computed expressions
