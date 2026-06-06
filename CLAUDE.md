@@ -26,9 +26,10 @@ Every change follows this sequence — do not skip steps or stop partway:
 9. **Tag** with `v*` (e.g. `git tag v0.5.22`) and push the tag — this triggers CI release to crates.io + PyPI
 10. **Wait for CI** — `gh run watch <id> --exit-status`
 11. **Update Homebrew** — get SHA256 of tarball, update `mdql-db/homebrew-tap` via GitHub API, pull tap locally, `brew reinstall mdql`
-12. **Install in zunid** — the zunid venv is uv-managed (no pip): `cd ~/repos/zunid && uv pip install --no-cache --reinstall "mdql==<version>" --index-url https://pypi.org/simple` (pin the exact version — plain `--upgrade` can miss a release published seconds earlier due to PyPI propagation lag)
-13. **Refresh the cargo CLI** — `cargo install --path crates/mdql --force` (the binary at `~/.cargo/bin/mdql` is on PATH and shadows the Homebrew build)
-14. **Close the GitHub issue** if applicable
+12. **Install in zunid (local)** — the zunid venv is uv-managed (no pip): `cd ~/repos/zunid && uv pip install --no-cache --reinstall "mdql==<version>" --index-url https://pypi.org/simple` (pin the exact version — plain `--upgrade` can miss a release published seconds earlier due to PyPI propagation lag)
+13. **Install on zunid-EC2** — the EC2 box runs zunid cron jobs with its own venv: `ssh zunid 'cd ~/repos/zunid && ~/.local/bin/uv pip install --no-cache --reinstall "mdql==<version>" --index-url https://pypi.org/simple && .venv/bin/python -c "import importlib.metadata as m; print(m.version(\"mdql\"))"'` — verify the printed version. Missed twice (left stale after the 0.5.33 and 0.5.34 releases); do not skip
+14. **Refresh the cargo CLI** — `cargo install --path crates/mdql --force` (the binary at `~/.cargo/bin/mdql` is on PATH and shadows the Homebrew build)
+15. **Close the GitHub issue** if applicable
 
 ## Version bump locations
 
