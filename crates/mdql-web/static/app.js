@@ -155,7 +155,7 @@ function renderTable(columns, rows) {
         html += '<tr>';
         for (const col of columns) {
             const val = row[col];
-            const display = val === null || val === undefined ? '' : String(val);
+            const display = val === null || val === undefined ? '' : (typeof val === 'object' ? JSON.stringify(val) : String(val));
             html += `<td title="${esc(display)}">${esc(truncate(display, 100))}</td>`;
         }
         html += '</tr>';
