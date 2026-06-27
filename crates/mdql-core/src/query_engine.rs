@@ -226,6 +226,24 @@ fn execute_with_fts(
             }
         }
 
+        // Materialize dotted dict references (e.g. `params.key`, `b.params.key`)
+        // as top-level keys so they survive the retain/null-fill below. WHERE
+        // resolves these via evaluate_expr; projection must match (see
+        // resolve_column). Aggregated rows are handled in aggregate_rows.
+        if !already_aggregated {
+            for row in &mut result {
+                for expr in named_exprs {
+                    if let SelectExpr::Column(name) = expr {
+                        if name.contains('.') && !row.contains_key(name) {
+                            if let Some(v) = resolve_column(row, name) {
+                                row.insert(name.clone(), v);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         let col_set: std::collections::HashSet<&str> =
             columns.iter().map(|s| s.as_str()).collect();
         for row in &mut result {
@@ -268,7 +286,7 @@ fn distinct_key(row: &Row, column_spec: &ColumnList, header: &[String]) -> Strin
             for se in exprs {
                 let val = match se {
                     SelectExpr::Column(name) => {
-                        row.get(name).cloned().unwrap_or(Value::Null)
+                        resolve_column(row, name).unwrap_or(Value::Null)
                     }
                     SelectExpr::Aggregate { .. } => {
                         row.get(&se.output_name()).cloned().unwrap_or(Value::Null)
@@ -306,14 +324,14 @@ fn aggregate_rows(
             let key: Vec<String> = group_keys
                 .iter()
                 .map(|k| {
-                    row.get(k)
+                    resolve_column(row, k)
                         .map(|v| v.to_display_string())
                         .unwrap_or_default()
                 })
                 .collect();
             let key_vals: Vec<Value> = group_keys
                 .iter()
-                .map(|k| row.get(k).cloned().unwrap_or(Value::Null))
+                .map(|k| resolve_column(row, k).unwrap_or(Value::Null))
                 .collect();
             if let Some(&idx) = key_index.get(&key) {
                 groups[idx].1.push(row);
@@ -339,12 +357,13 @@ fn aggregate_rows(
         for expr in exprs {
             match expr {
                 SelectExpr::Column(name) => {
-                    // Already filled if it's a group key; otherwise take first row's value
+                    // Already filled if it's a group key; otherwise take first row's
+                    // value, resolving dotted dict references (e.g. `params.key`).
                     if !out.contains_key(name) {
                         if let Some(first) = group_rows.first() {
                             out.insert(
                                 name.clone(),
-                                first.get(name).cloned().unwrap_or(Value::Null),
+                                resolve_column(first, name).unwrap_or(Value::Null),
                             );
                         }
                     }
@@ -690,6 +709,26 @@ pub fn evaluate(clause: &WhereClause, row: &Row) -> bool {
     }
 }
 
+/// Resolve a (possibly dotted) column reference against a row, descending into
+/// `Value::Dict` for paths like `params.key` or `b.params.key`. Returns `None`
+/// when neither a flat key nor any dict path matches, so callers can null-fill.
+///
+/// Single source of truth for column resolution: projection, DISTINCT, GROUP BY,
+/// and `evaluate_expr` all route through it so `SELECT a.dict.key` and
+/// `WHERE a.dict.key = ...` resolve identically.
+pub(crate) fn resolve_column(row: &Row, name: &str) -> Option<Value> {
+    if let Some(val) = row.get(name) {
+        return Some(val.clone());
+    }
+    // Try each dot split left-to-right (e.g. "b.params.key" → dict "b.params").
+    for (i, _) in name.match_indices('.') {
+        if let Some(Value::Dict(map)) = row.get(&name[..i]) {
+            return map.get(&name[i + 1..]).cloned();
+        }
+    }
+    None
+}
+
 /// Evaluate an Expr against a row, returning a Value.
 pub(crate) fn evaluate_expr(expr: &Expr, row: &Row) -> Value {
     match expr {
@@ -699,20 +738,7 @@ pub(crate) fn evaluate_expr(expr: &Expr, row: &Row) -> Value {
         Expr::Literal(SqlValue::Bool(b)) => Value::Bool(*b),
         Expr::Literal(SqlValue::Null) => Value::Null,
         Expr::Literal(SqlValue::List(_)) => Value::Null,
-        Expr::Column(name) => {
-            if let Some(val) = row.get(name) {
-                return val.clone();
-            }
-            // Try all possible dot splits for dict access (e.g. "s.params.key")
-            for (i, _) in name.match_indices('.') {
-                let dict_col = &name[..i];
-                let dict_key = &name[i + 1..];
-                if let Some(Value::Dict(map)) = row.get(dict_col) {
-                    return map.get(dict_key).cloned().unwrap_or(Value::Null);
-                }
-            }
-            Value::Null
-        }
+        Expr::Column(name) => resolve_column(row, name).unwrap_or(Value::Null),
         Expr::UnaryMinus(inner) => {
             match evaluate_expr(inner, row) {
                 Value::Int(n) => Value::Int(-n),
@@ -937,7 +963,10 @@ fn evaluate_comparison(cmp: &Comparison, row: &Row) -> bool {
     }
 
     // Fall back to legacy column-based comparison for IS NULL, IN, LIKE, etc.
-    let actual = row.get(&cmp.column);
+    // Resolve through resolve_column so dotted dict refs (e.g. `params.key`)
+    // work here too, matching the expression path above.
+    let actual_owned = resolve_column(row, &cmp.column);
+    let actual = actual_owned.as_ref();
 
     if cmp.op == CmpOp::IsNull {
         return actual.map_or(true, |v| v.is_null());
@@ -1327,6 +1356,90 @@ mod tests {
             }
             assert_eq!(row.get("missing_col"), Some(&Value::Null));
         }
+    }
+
+    fn make_dict_rows() -> Vec<Row> {
+        use indexmap::IndexMap;
+        // Two rows whose `params` is a Dict — mirrors strategies.params etc.
+        let mk = |path: &str, ev: &str, sl: i64| {
+            Row::from([
+                ("path".into(), Value::String(path.into())),
+                ("params".into(), Value::Dict(IndexMap::from([
+                    ("event_type".to_string(), Value::String(ev.into())),
+                    ("sl_pct".to_string(), Value::Int(sl)),
+                ]))),
+            ])
+        };
+        vec![mk("a.md", "buyback", 5), mk("b.md", "unlock", 8), mk("c.md", "buyback", 3)]
+    }
+
+    #[test]
+    fn test_select_dotted_dict_key_projects_value() {
+        // Regression: SELECT of a dict sub-key must resolve, not null out.
+        // Previously WHERE resolved `params.x` but projection returned Null.
+        let q = parse_query("SELECT path, params.event_type FROM test").unwrap();
+        let q = match q { Statement::Select(s) => s, _ => panic!("expected SELECT") };
+        let (rows, cols) = execute_inner(&q, &make_dict_rows(), None).unwrap();
+        assert_eq!(cols, vec!["path", "params.event_type"]);
+        assert_eq!(rows[0].get("params.event_type"), Some(&Value::String("buyback".into())));
+        assert_eq!(rows[1].get("params.event_type"), Some(&Value::String("unlock".into())));
+    }
+
+    #[test]
+    fn test_dotted_dict_key_select_and_where_agree() {
+        let q = parse_query(
+            "SELECT path FROM test WHERE params.event_type = 'buyback'").unwrap();
+        let q = match q { Statement::Select(s) => s, _ => panic!("expected SELECT") };
+        let (rows, _) = execute_inner(&q, &make_dict_rows(), None).unwrap();
+        let paths: Vec<_> = rows.iter().map(|r| r.get("path").cloned().unwrap()).collect();
+        assert_eq!(paths, vec![Value::String("a.md".into()), Value::String("c.md".into())]);
+    }
+
+    #[test]
+    fn test_missing_dotted_dict_key_null_filled() {
+        let q = parse_query("SELECT path, params.nope FROM test").unwrap();
+        let q = match q { Statement::Select(s) => s, _ => panic!("expected SELECT") };
+        let (rows, cols) = execute_inner(&q, &make_dict_rows(), None).unwrap();
+        assert_eq!(cols, vec!["path", "params.nope"]);
+        for row in &rows {
+            assert_eq!(row.get("params.nope"), Some(&Value::Null));
+        }
+    }
+
+    #[test]
+    fn test_dotted_dict_key_is_not_null() {
+        let q = parse_query(
+            "SELECT path FROM test WHERE params.event_type IS NOT NULL").unwrap();
+        let q = match q { Statement::Select(s) => s, _ => panic!("expected SELECT") };
+        let (rows, _) = execute_inner(&q, &make_dict_rows(), None).unwrap();
+        assert_eq!(rows.len(), 3); // all three rows have params.event_type
+    }
+
+    #[test]
+    fn test_dotted_dict_key_in_and_like() {
+        for (sql, expect) in [
+            ("SELECT path FROM test WHERE params.event_type IN ('buyback','x')", 2),
+            ("SELECT path FROM test WHERE params.event_type LIKE 'buy%'", 2),
+            ("SELECT path FROM test WHERE params.event_type IS NULL", 0),
+        ] {
+            let q = parse_query(sql).unwrap();
+            let q = match q { Statement::Select(s) => s, _ => panic!("expected SELECT") };
+            let (rows, _) = execute_inner(&q, &make_dict_rows(), None).unwrap();
+            assert_eq!(rows.len(), expect, "query: {sql}");
+        }
+    }
+
+    #[test]
+    fn test_group_by_dotted_dict_key() {
+        let q = parse_query(
+            "SELECT params.event_type, COUNT(*) FROM test GROUP BY params.event_type").unwrap();
+        let q = match q { Statement::Select(s) => s, _ => panic!("expected SELECT") };
+        let (rows, _) = execute_inner(&q, &make_dict_rows(), None).unwrap();
+        // buyback (2 rows) and unlock (1 row)
+        assert_eq!(rows.len(), 2);
+        let buyback = rows.iter().find(|r|
+            r.get("params.event_type") == Some(&Value::String("buyback".into()))).unwrap();
+        assert_eq!(buyback.get("COUNT(*)"), Some(&Value::Int(2)));
     }
 
     #[test]
