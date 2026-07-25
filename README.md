@@ -708,6 +708,10 @@ mdql query examples/strategies/ \
 - `DATEDIFF(date1, date2)` — returns number of days between two dates (date1 - date2)
 - `date + INTERVAL N DAY` / `date - INTERVAL N DAYS` — add or subtract days from a date or datetime
 
+#### Date literals
+
+Dates may be written quoted or bare — `WHERE created >= 2026-01-01` and `WHERE created >= '2026-01-01'` are the same query. Bare dates must be zero-padded ISO (`YYYY-MM-DD`, optionally `THH:MM[:SS]` or a space before the time); `2026-1-1` is a parse error rather than a wrong answer, since dates compare as strings. Arithmetic still needs spaces: `2026 - 1 - 1` is the number 2024.
+
 ### JOINs
 
 Point at the database directory (parent of table folders) for cross-table queries. Supports INNER JOIN and LEFT JOIN with two or more tables:

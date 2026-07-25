@@ -30,6 +30,8 @@ static TOKEN_RE: LazyLock<Regex> = LazyLock::new(|| {
         \s*(?:
             (?P<backtick>`[^`]+`)
             | (?P<string>'(?:[^'\\]|\\.)*')
+            | (?P<date>\d{4}-\d{1,2}-\d{1,2}
+                (?:[T\x20]\d{1,2}:\d{2}(?::\d{2})?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?)
             | (?P<number>\d+(?:\.\d+)?)
             | (?P<op><=|>=|!=|[=<>,*()+\-/%])
             | (?P<word>[A-Za-z_][A-Za-z0-9_./-]*)
@@ -37,6 +39,36 @@ static TOKEN_RE: LazyLock<Regex> = LazyLock::new(|| {
     )
     .unwrap()
 });
+
+static ISO_DATE_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?$",
+    )
+    .unwrap()
+});
+
+/// #66: an unquoted date literal is a string, same as its quoted form — but
+/// only in canonical ISO shape. `2026-1-1` would sort wrongly against
+/// zero-padded ISO values, so it errors instead of quietly comparing wrong.
+fn date_literal(raw: &str) -> Result<SqlValue, MdqlError> {
+    if ISO_DATE_RE.is_match(raw) {
+        return Ok(SqlValue::String(raw.to_string()));
+    }
+    let padded: Vec<String> = raw
+        .splitn(3, '-')
+        .map(|part| {
+            let (num, rest) = part.split_at(
+                part.find(|c: char| !c.is_ascii_digit()).unwrap_or(part.len()),
+            );
+            format!("{:0>2}{}", num, rest)
+        })
+        .collect();
+    Err(MdqlError::QueryParse(format!(
+        "Ambiguous date literal '{}': dates compare as strings, so use the quoted zero-padded ISO form '{}'",
+        raw,
+        padded.join("-"),
+    )))
+}
 
 #[derive(Debug, Clone)]
 struct Token {
@@ -60,6 +92,16 @@ fn tokenize(sql: &str) -> Vec<Token> {
             tokens.push(Token {
                 token_type: "string".into(),
                 value: raw[1..raw.len() - 1].into(),
+                raw: raw.into(),
+            });
+        } else if let Some(m) = caps.name("date") {
+            // #66: an unquoted `2026-01-01` used to lex as 2026 - 1 - 1 and
+            // compare the arithmetic result (2024) against the column, so the
+            // query returned a plausible wrong row set with no error.
+            let raw = m.as_str();
+            tokens.push(Token {
+                token_type: "date".into(),
+                value: raw.into(),
                 raw: raw.into(),
             });
         } else if let Some(m) = caps.name("number") {
@@ -751,6 +793,10 @@ impl Parser {
                 let v = self.advance().value;
                 Ok(Expr::Literal(SqlValue::String(v)))
             }
+            "date" => {
+                let v = self.advance().value;
+                Ok(Expr::Literal(date_literal(&v)?))
+            }
             "keyword" if t.value == "NULL" => {
                 self.advance();
                 Ok(Expr::Literal(SqlValue::Null))
@@ -1097,6 +1143,10 @@ impl Parser {
                 let v = self.advance().value;
                 Ok(SqlValue::String(v))
             }
+            "date" => {
+                let v = self.advance().value;
+                date_literal(&v)
+            }
             "number" => {
                 let v = self.advance().value;
                 if v.contains('.') {
@@ -1261,6 +1311,62 @@ mod tests {
             };
             assert_eq!(cmp.value, Some(expected));
         }
+    }
+
+    #[test]
+    fn test_unquoted_date_literal_parses_as_string_not_arithmetic() {
+        // #66: `date >= 2026-01-01` lexed as 2026 - 1 - 1 and compared 2024
+        // against the column — a silently wrong row set, no error.
+        for (bare, quoted) in [
+            (
+                "SELECT title FROM t WHERE date >= 2026-01-01",
+                "SELECT title FROM t WHERE date >= '2026-01-01'",
+            ),
+            (
+                "SELECT title FROM t WHERE ts < 2026-01-01T12:30:00",
+                "SELECT title FROM t WHERE ts < '2026-01-01T12:30:00'",
+            ),
+            (
+                "SELECT title FROM t WHERE ts = 2026-01-01 12:30:00",
+                "SELECT title FROM t WHERE ts = '2026-01-01 12:30:00'",
+            ),
+            (
+                "SELECT title FROM t WHERE d IN (2026-01-01, 2026-02-01)",
+                "SELECT title FROM t WHERE d IN ('2026-01-01', '2026-02-01')",
+            ),
+            (
+                "UPDATE t SET closed = 2026-01-01 WHERE id = 1",
+                "UPDATE t SET closed = '2026-01-01' WHERE id = 1",
+            ),
+        ] {
+            assert_eq!(
+                parse_query(bare).unwrap(),
+                parse_query(quoted).unwrap(),
+                "bare and quoted forms must parse identically: {bare}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_non_iso_date_literal_errors_instead_of_comparing_wrong() {
+        // #66: `2026-1-1` sorts wrong against zero-padded ISO strings, so it
+        // has to be loud rather than answer a different question.
+        let err = parse_query("SELECT title FROM t WHERE date >= 2026-1-1").unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("2026-1-1"), "{msg}");
+        assert!(msg.contains("'2026-01-01'"), "{msg}");
+    }
+
+    #[test]
+    fn test_spaced_arithmetic_still_subtracts() {
+        // The date rule must not swallow real arithmetic on integers.
+        let Statement::Select(q) = parse_query("SELECT n - 1 - 1 AS m FROM t").unwrap() else {
+            panic!("Expected Select")
+        };
+        let ColumnList::Named(cols) = q.columns else { panic!("Expected named columns") };
+        assert_eq!(cols.len(), 1);
+        let SelectExpr::Expr { expr, .. } = &cols[0] else { panic!("Expected expression") };
+        assert!(matches!(expr, Expr::BinaryOp { op: ArithOp::Sub, .. }), "{expr:?}");
     }
 
     #[test]
