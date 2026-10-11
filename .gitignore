@@ -16,3 +16,8 @@ _mdql_index/
 *.dylib
 *.so
 *.dSYM/
+
+# local agent tooling
+.agent-deck/
+.claude/
+.mcp.json
