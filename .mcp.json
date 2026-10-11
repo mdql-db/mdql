@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "aws": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@awslabs/mcp-server-aws"
+      ]
+    },
+    "memory": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-memory"
+      ]
+    }
+  }
+}

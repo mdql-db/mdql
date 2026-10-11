@@ -1,0 +1,29 @@
+[[skills]]
+  id = "pool/git-writing"
+  name = "git-writing"
+  source = "pool"
+  source_path = "/Users/rasmusgroth/.agent-deck/skills/pool/git-writing"
+  entry_name = "git-writing"
+  target_path = ".claude/skills/git-writing"
+  mode = "symlink"
+  attached_at = "2026-04-16T18:51:38+02:00"
+
+[[skills]]
+  id = "pool/mdql"
+  name = "mdql"
+  source = "pool"
+  source_path = "/Users/rasmusgroth/.agent-deck/skills/pool/mdql"
+  entry_name = "mdql"
+  target_path = ".claude/skills/mdql"
+  mode = "symlink"
+  attached_at = "2026-04-16T18:51:38+02:00"
+
+[[skills]]
+  id = "pool/software-principles"
+  name = "software-principles"
+  source = "pool"
+  source_path = "/Users/rasmusgroth/.agent-deck/skills/pool/software-principles"
+  entry_name = "software-principles"
+  target_path = ".claude/skills/software-principles"
+  mode = "symlink"
+  attached_at = "2026-04-16T18:51:38+02:00"
